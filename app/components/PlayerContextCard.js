@@ -21,6 +21,14 @@ export default function PlayerContextCard({ context }) {
       {schedule.kickoff ? <span className="muted"> · {new Date(schedule.kickoff).toLocaleString()}</span> : null}
       {schedule.status === "kickoff_passed" ? <span className="muted"> · kickoff passed; live status unavailable</span> : null}</p>
     <MatchupDifficulty matchup={context.matchup} />
+    {context.adjusted_matchup ? <p className="muted">{context.adjusted_matchup.label} · {context.adjusted_matchup.games} games with opponent baselines · through W{context.adjusted_matchup.through_week ?? "?"}{context.adjusted_matchup.small_sample ? " · small sample, shrunk toward neutral" : ""}</p> : null}
+    {context.model ? <details><summary>Decision model · {context.model.model_version}</summary>
+      <p>Start Value: {number(context.model.start_value.weekly_start_value)} · Football acquisition estimate: {number(context.model.pickup_value.central)}. These are separate model estimates, not provider projections or market value.</p>
+      <p className="muted">Player quality: {number(context.model.player_value)} · Replacement: {number(context.model.replacement?.replacement_value)} · VOR: {number(context.model.replacement?.value_over_replacement)}. Evidence: {context.model.features.confidence}; {context.model.features.current_games} current games; prior contribution {(context.model.features.prior.contribution * 100).toFixed(0)}%.</p>
+      <p>Covered xFP/game: {number(context.model.features.xfp_per_game)} · matching actual/game: {number(context.model.features.actual_matching_rules_per_game)} · FPOE/game: {number(context.model.features.fpoe_per_game)} · cumulative xFP: {number(context.model.features.xfp_cumulative)}.</p>
+      {context.model.features.provisional_role_expansion ? <p>Provisional role expansion: only two or three games; not an established trend.</p> : null}
+      <pre className="evidenceJson">{JSON.stringify({ opportunity: context.model.features.opportunity, prior: context.model.features.prior, uncertainty: context.model.features.uncertainty, denominators: context.model.features.denominators }, null, 2)}</pre>
+    </details> : null}
     <p className="muted">Status: {context.player.injury_status || context.player.status || "Unavailable"}</p>
     <p className="muted">Weekly expert rank: unavailable · Consensus: unavailable · Projection: unavailable · Rostered: unavailable · Ownership change: unavailable</p>
     <p className="muted">Sleeper 24h add interest: {context.interest.sleeper_adds_24h?.toLocaleString() ?? "Not observed"}. Available-player percentile: {number(context.interest.available_percentile)}; rank: {context.interest.available_rank ?? "Unavailable"}. {context.interest.meaning}</p>

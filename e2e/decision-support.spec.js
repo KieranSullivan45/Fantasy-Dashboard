@@ -22,9 +22,10 @@ test("weekly actuals, player history, source limits and explainable waivers rend
   await expect(matchup).toContainText("projections unavailable");
   const recommendations = page.getByRole("region", { name: "Waiver recommendations", exact: true });
   await expect(recommendations).toContainText("60 eligible players evaluated before truncation");
+  await page.getByLabel("Recommendation type", { exact: true }).selectOption("best_overall");
   await expect(recommendations).toContainText("Player 65");
   await recommendations.getByText("Score components", { exact: true }).first().click();
-  await expect(recommendations).toContainText("external quality: Unavailable");
+  await expect(recommendations).toContainText("football acquisition:");
   await recommendations.getByText("Player context", { exact: true }).first().click();
   await expect(recommendations).toContainText("Rostered: unavailable");
   await expect(recommendations).toContainText("W2 vs NE");
@@ -73,13 +74,14 @@ test("dual-position recommendations and injury stashes remain separate on mobile
   const recommendations = page.locator(".waiverRecommendations");
   await expect(recommendations).toContainText("60 eligible players");
   await page.getByLabel("Recommendation position", { exact: true }).selectOption("WR");
+  await page.getByLabel("Recommendation type", { exact: true }).selectOption("best_overall");
   await expect(recommendations).toContainText("Player 65");
   await expect(recommendations).toContainText("RB/WR");
   await expect(recommendations).toContainText("Pickup Rating");
   await page.getByLabel("Recommendation position", { exact: true }).selectOption("ALL");
   await page.getByLabel("Recommendation type", { exact: true }).selectOption("injury_stashes");
   await expect(recommendations).toContainText("Player 64");
-  await expect(recommendations).toContainText("no claim of availability this week");
+  await expect(recommendations).toContainText("Injured assets");
   await expect(recommendations).not.toContainText("Player 65");
   await recommendations.getByText("Player context", { exact: true }).first().click();
   await recommendations.getByText("Usage history and advanced analytics", { exact: true }).first().click();
@@ -98,4 +100,24 @@ test("rostered and available player summaries are visible without expanding cont
   await expect(page.locator(".playerQuickContext").first()).toContainText("Recent");
   await expect(page.locator(".playerQuickContext").first()).toContainText("small sample");
   await expect(page.locator(".playerContext[open]")).toHaveCount(0);
+});
+
+test("calibrated model distinguishes add/drop evidence, start value and acquisition on mobile", async ({ page }) => {
+  const data = await fixture(A);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.route("**/api/snapshot?**", route => route.fulfill({ json: data.snapshot }));
+  await page.route("**/api/decision-support?**", route => route.fulfill({ json: data.decision }));
+  await page.goto("/");
+  const region = page.locator(".waiverRecommendations");
+  await expect(region).toContainText("No ALL candidates with qualifying evidence");
+  await page.getByLabel("Recommendation type", { exact: true }).selectOption("best_overall");
+  await expect(region).toContainText("ADD Player 65");
+  await region.getByText("Lineup replacement evidence", { exact: true }).first().click();
+  await expect(region).toContainText("net_roster_improvement");
+  await region.getByText("Player context", { exact: true }).first().click();
+  await region.getByText("Decision model · decision-0.3.2", { exact: true }).first().click();
+  await expect(region).toContainText("Start Value:");
+  await expect(region).toContainText("Football acquisition estimate:");
+  await expect(region).toContainText("prior contribution");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });

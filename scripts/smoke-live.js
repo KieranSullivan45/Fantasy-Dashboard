@@ -26,7 +26,19 @@ for (const id of getConfiguredLeagueIds()) {
   const contexts = Object.values(data.player_context);
   assert.ok(data.sources.some(s => s.source_id === "nflverse_snaps" && s.status === "available"));
   assert.ok(data.sources.some(s => s.source_id === "ffopportunity" && s.status === "available"));
-  assert.equal(data.waivers.model_version, "roster-value-v2");
+  assert.equal(data.waivers.model_version, "decision-0.3.2");
+  assert.equal(data.model_version, "decision-0.3.2");
+  assert.equal(data.feature_version, "weekly-features-2");
+  assert.equal(data.team_strength_v2.length, data.team_strength.length);
+  for (const team of data.team_strength_v2) {
+    const ids = team.best_legal_lineup.map(p => p.player_id).filter(Boolean);
+    assert.equal(new Set(ids).size, ids.length);
+  }
+  for (const item of data.waivers.recommendations) {
+    assert.ok(item.roster_value.best.recommended);
+    assert.ok(item.roster_value.net_roster_improvement > 0);
+    assert.ok(item.roster_value.best.drop_player_id || item.roster_value.best.transaction_type === "vacant_active_slot");
+  }
   assert.equal(new Set(Object.keys(data.waivers.candidate_details)).size, Object.keys(data.waivers.candidate_details).length);
   for (const c of contexts) {
     assert.ok(Array.isArray(c.player.fantasy_positions));

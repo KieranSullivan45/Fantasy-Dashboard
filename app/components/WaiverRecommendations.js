@@ -27,7 +27,7 @@ export default function WaiverRecommendations({ data }) {
         <strong>{key.replaceAll("_", " ")}: {component.score == null ? "Unavailable" : `${component.score.toFixed(1)} × ${component.weight}% = ${component.contribution.toFixed(1)}`}</strong>
         <p className="muted">{component.explanation}</p><pre className="evidenceJson">Raw inputs: {JSON.stringify(component.raw_value, null, 2)}</pre>
       </div>)}</div><p className="muted">Comparison group: {item.comparable_group.replaceAll("+", ", ")}</p></details>
-      <details><summary>Lineup replacement evidence</summary><pre className="evidenceJson">{JSON.stringify(item.roster_value, null, 2)}</pre><p className="muted">Addition only: if your roster is full, compare the cost of a drop separately. Unknown compatible players prevent an assumed upgrade.</p></details>
+      <details><summary>Lineup replacement evidence</summary><pre className="evidenceJson">{JSON.stringify(item.roster_value, null, 2)}</pre><p className="muted">Legal add/drop estimates include the lost asset. Platform locks and reserve moves require verification; unknown compatible players prevent an assumed upgrade.</p></details>
       <details><summary>Player context</summary><PlayerContextCard context={data.player_context[item.player_id]} /></details>
     </article>)}</div>
     {!recommendations.length ? <div className="card">No {position} candidates with qualifying evidence in the returned category. The available-player pool below remains accessible.</div> : null}
