@@ -27,6 +27,6 @@ test("waivers score the full pool before truncation without using search rank or
   contexts["99"].schedule.status = "no_scheduled_game";
   const second = waiverRecommendations(players, contexts, strengths, 1, players, 5);
   assert.notEqual(second.recommendations[0].player_id, "99");
-  assert.equal(second.limited_candidates[0].status, "stash_or_bye");
+  assert.equal(second.limited_candidates[0].status, "stash_bye_or_kickoff_passed");
   assert.equal(waiverRecommendations(players, {}, [], null, players).scored_count, 0);
 });

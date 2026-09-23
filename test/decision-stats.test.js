@@ -38,4 +38,7 @@ test("production excludes current/future weeks, deduplicates games and does not 
   assert.equal(result.players["1"].recent_games[0].week, 2);
   assert.equal(result.players["1"].usage_trend, null);
   assert.equal(result.games[0].team, "LAR");
+  const fb = buildProduction([{ ...first, position: "FB", receptions: "2" }], ids.map, { season: 2026, week: 3, settings: { rec: 1, bonus_rec_rb: 0.5 } });
+  assert.equal(fb.games[0].position, "RB");
+  assert.equal(fb.players["1"].ppg, 3);
 });
