@@ -1,0 +1,60 @@
+import { test, expect } from "@playwright/test";
+import { buildDecisionContext } from "../lib/decision/build-context.js";
+import { decisionFixtureOptions } from "../test/decision-fixtures.js";
+const A = "1401373864818192384", B = "1395493939665989632";
+async function fixture(id) {
+  const options = decisionFixtureOptions();
+  const snapshot = await options.loadLeague(id);
+  snapshot.league.name = id === A ? "Alpha" : "Beta";
+  snapshot.current_matchups.push({ roster_id: 2, matchup_id: 1, starters: ["6", "0"], starters_points: [0, 0], points: 0, custom_points: null });
+  const decision = await buildDecisionContext(id, { ...options, loadLeague: async () => snapshot });
+  return { snapshot, decision };
+}
+
+test("weekly actuals, player history, source limits and explainable waivers render", async ({ page }) => {
+  const data = await fixture(A);
+  await page.route("**/api/snapshot?**", route => route.fulfill({ json: data.snapshot }));
+  await page.route("**/api/decision-support?**", route => route.fulfill({ json: data.decision }));
+  await page.goto("/");
+  const matchup = page.getByRole("region", { name: "Weekly matchup", exact: true });
+  await expect(matchup.getByText("CURRENT OPPONENT")).toBeVisible();
+  await expect(matchup).toContainText("actual points");
+  await expect(matchup).toContainText("projections unavailable");
+  const recommendations = page.getByRole("region", { name: "Waiver recommendations", exact: true });
+  await expect(recommendations).toContainText("60 eligible players evaluated before truncation");
+  await expect(recommendations).toContainText("Player 65");
+  await recommendations.getByText("Score components", { exact: true }).first().click();
+  await expect(recommendations).toContainText("external quality: Unavailable");
+  await recommendations.getByText("Player context", { exact: true }).first().click();
+  await expect(recommendations).toContainText("Rostered: unavailable");
+  await expect(recommendations).toContainText("W2 vs NE");
+  await expect(recommendations).toContainText("most RB points allowed");
+  await page.getByText("Data sources, coverage and limitations").click();
+  await expect(page.locator(".sourceStatus")).toContainText("ownership: unsupported");
+});
+
+test("late decision responses cannot overwrite a newly selected league", async ({ page }) => {
+  const a = await fixture(A), b = await fixture(B), pending = [];
+  await page.route("**/api/snapshot?**", route => route.fulfill({ json: new URL(route.request().url()).searchParams.get("league") === A ? a.snapshot : b.snapshot }));
+  await page.route("**/api/decision-support?**", route => { pending.push(route); });
+  await page.goto("/");
+  await expect.poll(() => pending.length).toBe(1);
+  await page.getByLabel("League", { exact: true }).selectOption(B);
+  await expect.poll(() => pending.length).toBe(2);
+  await pending[1].fulfill({ json: b.decision });
+  await expect(page.locator(".waiverRecommendations")).toBeVisible();
+  await pending[0].fulfill({ status: 502, json: { error: "Old decision failure" } });
+  await expect(page.locator(".summaryGrid")).toContainText("Beta");
+  await expect(page.getByText("Old decision failure")).toHaveCount(0);
+});
+
+test("mobile layout retains actual matchup when optional decision data fails", async ({ page }) => {
+  const data = await fixture(A);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.route("**/api/snapshot?**", route => route.fulfill({ json: data.snapshot }));
+  await page.route("**/api/decision-support?**", route => route.fulfill({ status: 502, json: { error: "Weekly metrics unavailable" } }));
+  await page.goto("/");
+  await expect(page.getByText("Weekly metrics unavailable")).toBeVisible();
+  await expect(page.getByText("CURRENT OPPONENT")).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});

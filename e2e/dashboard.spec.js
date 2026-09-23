@@ -3,6 +3,9 @@ import { buildLeagueSnapshot } from "../lib/sleeper.js";
 import { fixtureFetch } from "../test/fixtures.js";
 
 const A = "1401373864818192384", B = "1395493939665989632";
+test.beforeEach(async ({ page }) => {
+  await page.route("**/api/decision-support?**", route => route.fulfill({ status: 503, json: { error: "Decision provider unavailable in baseline test" } }));
+});
 async function snapshot(id) {
   const result = await buildLeagueSnapshot(id, { fetchData: fixtureFetch() });
   result.league.name = `League ${id === A ? "Alpha" : "Beta"}`;

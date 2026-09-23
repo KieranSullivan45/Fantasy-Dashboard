@@ -3,13 +3,19 @@
 import { useEffect, useMemo, useState } from "react";
 import { createSnapshotLoader } from "../lib/snapshot-loader.js";
 import { transactionPieces } from "../lib/transaction-display.js";
+import { createDecisionLoader } from "../lib/decision-loader.js";
+import { decisionBasis } from "../lib/decision/basis.js";
+import WeeklyMatchup from "./components/WeeklyMatchup.js";
+import PlayerContextCard from "./components/PlayerContextCard.js";
+import WaiverRecommendations from "./components/WaiverRecommendations.js";
+import SourceStatus from "./components/SourceStatus.js";
 
 const LEAGUES = ["1401373864818192384", "1395493939665989632"];
 const POSITIONS = ["QB", "RB", "WR", "TE", "K", "DEF"];
 
-function PlayerRow({ player }) {
+function PlayerRow({ player, context }) {
   return (
-    <div className="playerRow">
+    <div className="playerWithContext"><div className="playerRow">
       <div>
         <strong>{player.name}</strong>
         <span className="muted"> {player.position || ""} {player.team ? `· ${player.team}` : ""}</span>
@@ -18,11 +24,11 @@ function PlayerRow({ player }) {
         {player.injury_status ? <span className="badge warn">{player.injury_status}</span> : null}
         {player.trending_adds_24h ? <span className="badge">+{player.trending_adds_24h}</span> : null}
       </div>
-    </div>
+    </div>{context ? <details className="playerContext"><summary>Weekly context</summary><PlayerContextCard context={context} /></details> : null}</div>
   );
 }
 
-function RosterCard({ roster, settings = {} }) {
+function RosterCard({ roster, settings = {}, contexts = {} }) {
   return (
     <article className={`card rosterCard ${roster.is_user ? "mine" : ""}`}>
       <div className="cardHeader">
@@ -39,7 +45,7 @@ function RosterCard({ roster, settings = {} }) {
         {roster.starter_slots.map((entry, index) => (
           <div key={index}>
             <span className="muted">{entry.slot}</span>
-            {entry.player_id ? <PlayerRow player={roster.starters.find(p => p.player_id === entry.player_id)} /> : <div className="playerRow muted">Empty slot</div>}
+            {entry.player_id ? <PlayerRow player={roster.starters.find(p => p.player_id === entry.player_id)} context={contexts[entry.player_id]} /> : <div className="playerRow muted">Empty slot</div>}
           </div>
         ))}
       </div>
@@ -49,7 +55,7 @@ function RosterCard({ roster, settings = {} }) {
           <details key={label}>
             <summary>{label} ({group.length})</summary>
             <div className="compactList detailsList">
-              {group.map(p => <PlayerRow key={p.player_id} player={p} />)}
+              {group.map(p => <PlayerRow key={p.player_id} player={p} context={contexts[p.player_id]} />)}
               {!group.length ? <span className="muted">No players</span> : null}
             </div>
           </details>
@@ -77,11 +83,20 @@ export default function Home() {
   const error = snapshot.leagueId === leagueId ? snapshot.error : "";
   const loading = snapshot.leagueId !== leagueId || snapshot.loading;
   const [position, setPosition] = useState("RB");
+  const [decisionState, setDecisionState] = useState({ data: null, loading: false, error: "" });
+  const [decisionLoader] = useState(() => createDecisionLoader(setDecisionState));
+  const basis = data ? decisionBasis(data) : null;
+  const decision = decisionState.basis === basis ? decisionState.data : null;
 
   useEffect(() => {
     loader.load(leagueId);
     return () => loader.cancel();
   }, [leagueId, loader]);
+
+  useEffect(() => {
+    if (data) decisionLoader.load(data);
+    return () => decisionLoader.cancel();
+  }, [data, decisionLoader]);
 
   const myTeam = data?.my_roster;
   const opponents = useMemo(
@@ -124,21 +139,25 @@ export default function Home() {
             <div className="stat"><span>Last sync</span><strong>{new Date(data.generated_at).toLocaleTimeString()}</strong></div>
           </section>
 
+          <WeeklyMatchup snapshot={data} decision={decision} />
+          {decision ? <SourceStatus data={decision} /> : <p className="muted">{decisionState.basis === basis && decisionState.error ? decisionState.error : "Loading weekly player context…"}</p>}
+
           <section className="section">
             <div className="sectionTitle">
               <div><p className="eyebrow">ROSTER</p><h2>Your team</h2></div>
               <a href={`/api/snapshot?league=${leagueId}&compact=1`} target="_blank">Open ChatGPT snapshot ↗</a>
             </div>
-            {myTeam ? <RosterCard roster={myTeam} settings={data.league.settings} /> : <div className="card">Your Sleeper account is not attached to a roster in this league.</div>}
+            {myTeam ? <RosterCard roster={myTeam} settings={data.league.settings} contexts={decision?.player_context} /> : <div className="card">Your Sleeper account is not attached to a roster in this league.</div>}
           </section>
 
+          {decision ? <WaiverRecommendations data={decision} position={position} /> : null}
           <section className="section">
             <div className="sectionTitle"><div><p className="eyebrow">WAIVERS</p><h2>Available players</h2></div></div>
             <div className="tabs">
               {POSITIONS.map((pos) => <button key={pos} className={position === pos ? "active" : ""} onClick={() => setPosition(pos)}>{pos}</button>)}
             </div>
             <div className="card freeAgents">
-              {(data.free_agents[position] || []).slice(0, 20).map((p) => <PlayerRow key={p.player_id} player={p} />)}
+              {(data.free_agents[position] || []).slice(0, 20).map((p) => <PlayerRow key={p.player_id} player={p} context={decision?.player_context[p.player_id]} />)}
               {!data.free_agents[position]?.length ? <span className="muted">No eligible available players at this position.</span> : null}
             </div>
           </section>
@@ -167,7 +186,7 @@ export default function Home() {
           <section className="section">
             <div className="sectionTitle"><div><p className="eyebrow">TRADE MAP</p><h2>Every opponent roster</h2></div></div>
             <div className="rosterGrid">
-              {opponents.map((roster) => <RosterCard key={roster.roster_id} roster={roster} settings={data.league.settings} />)}
+              {opponents.map((roster) => <RosterCard key={roster.roster_id} roster={roster} settings={data.league.settings} contexts={decision?.player_context} />)}
             </div>
           </section>
 
