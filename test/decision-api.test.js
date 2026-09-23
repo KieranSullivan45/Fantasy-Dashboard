@@ -22,8 +22,8 @@ test("decision endpoint scores the entire eligible pool and leaves v0.2 snapshot
   assert.equal(data.player_context["65"].projection, null);
   assert.equal(data.player_context["65"].rankings.average_rank, null);
   assert.equal(data.basis, decisionBasis(snapshot));
-  assert.equal(data.waivers.model_version, "roster-value-v2");
-  assert.ok(data.waivers.categories.immediate_upgrades.players.length);
+  assert.equal(data.waivers.model_version, "decision-0.3.2");
+  assert.equal(data.waivers.categories.immediate_upgrades.players.length, 0); // Two games cannot establish an immediate upgrade.
   for (const group of Object.values(data.waivers.categories)) for (const player of group.players) {
     assert.ok(data.waivers.candidate_details[player.player_id]);
     assert.ok(data.player_context[player.player_id]);
@@ -110,3 +110,4 @@ test("decision loader ignores superseded completions and mismatched roster state
   pending[3]({ ok: true, json: async () => ({ basis: decisionBasis(a) }) }); await fourth;
   assert.equal(states.length, count);
 });
+
