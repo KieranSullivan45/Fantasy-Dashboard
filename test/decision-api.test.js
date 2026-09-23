@@ -62,6 +62,21 @@ test("decision analytics preserve expected-event inputs and ignore future model 
   assert.deepEqual(analytics.history[0].opportunity_model.components.rec, [2, 4, 2, 4, 1]);
 });
 
+test("a team change disables old-team role signals while retaining weekly history", async () => {
+  const options = decisionFixtureOptions(), snapshot = await options.loadLeague("A");
+  snapshot.matchup_week = 5;
+  options.loadLeague = async () => snapshot;
+  options.statsSource = async () => ({ source_id: "nflverse_stats", status: "available", warnings: [], data: [1, 2, 3, 4].map(week => ({ player_id: "g65", position: "RB", season: 2026, season_type: "REG", week, game_id: `game${week}`, team: "BUF", opponent_team: "NE", receptions: 5, targets: 10, carries: 10, target_share: week < 3 ? 0.1 : 0.3, passing_tds: 0 })) });
+  const original = await buildDecisionContext("A", options);
+  assert.ok(original.player_context["65"].analytics.signals.some(s => s.label === "Target share rising"));
+  snapshot.free_agents.RB.find(p => p.player_id === "65").team = "NE";
+  const moved = await buildDecisionContext("A", options);
+  assert.equal(moved.player_context["65"].analytics.history.length, 4);
+  assert.equal(moved.player_context["65"].analytics.current_team_matches, false);
+  assert.deepEqual(moved.player_context["65"].analytics.signals, []);
+  assert.equal(moved.player_context["65"].analytics.trends.target_share.delta, null);
+});
+
 test("external source failures retain matchup and clearly mark missing metrics", async () => {
   const options = decisionFixtureOptions();
   const data = await buildDecisionContext("A", { ...options, statsSource: async () => { throw new Error("outage"); } });

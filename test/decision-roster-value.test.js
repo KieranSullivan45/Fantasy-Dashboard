@@ -60,7 +60,7 @@ test("contingent RB watch needs four fresh games and an observed same-team lead"
   const rb = player("back", ["RB"], 10, { team: "BUF" }), lead = player("lead", ["RB"], 20, { team: "BUF" });
   const ctx = contexts([rb, lead]);
   ctx.back.analytics = { recorded_games: 4, through_week: 4, trends: { carry_share: { delta: 0.1, recent_average: 0.3 } } };
-  ctx.lead.analytics = { trends: { carry_share: { recent_average: 0.6 } } };
+  ctx.lead.analytics = { through_week: 4, trends: { carry_share: { recent_average: 0.6 } } };
   const run = () => waiverRecommendations([rb], ctx, [], null, [rb, lead]).all_evaluations[0];
   assert.ok(run().recommendation_types.includes("contingent_rbs"));
   assert.equal(run().contingent_evidence.lead_player_id, "lead");

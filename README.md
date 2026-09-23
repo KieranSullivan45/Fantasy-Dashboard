@@ -1,5 +1,9 @@
 # Fantasy Command Center
 
+## v0.3.1 football judgment
+
+Adds multi-position eligibility, lineup-aware replacement value, separate pickup categories, sourced usage history and league-scored expected opportunity. Player cards show concise role trends with deeper evidence on demand. Early-season safeguards keep two-game samples from becoming strong role claims. See [v0.3.1 sources, contracts, weights and limitations](docs/v0.3.1.md).
+
 ## v0.3 weekly decision support
 
 Adds actual weekly matchups, league-specific historical production, schedules, position-specific points allowed, and explainable waiver candidates evaluated across the full eligible pool. Rankings, projections and ownership remain optional/unavailable. The original `/api/snapshot` schema stays **0.2**; new metrics use `/api/decision-support` schema **0.3**.
