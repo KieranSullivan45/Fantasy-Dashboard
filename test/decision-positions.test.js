@@ -23,3 +23,13 @@ test("provider primary position never grants eligibility absent from platform po
   assert.equal(pool.RB.length, 0);
   assert.equal(pool.TE.length, 1);
 });
+
+test("platform premium eligibility overrides conflicting provider position; ambiguous dual premiums stay unknown", () => {
+  const row = { player_id: "g", position: "RB", season: 2026, season_type: "REG", week: 1, game_id: "g1", receptions: 4 };
+  const options = { season: 2026, week: 2, settings: { rec: 1, bonus_rec_te: 0.5 }, platformPlayers: new Map([["p", { fantasy_positions: ["TE"] }]]) };
+  assert.equal(buildProduction([row], new Map([["g", "p"]]), options).players.p.ppg, 6);
+  options.platformPlayers.set("p", { fantasy_positions: ["RB", "TE"] });
+  const production = buildProduction([row], new Map([["g", "p"]]), options);
+  assert.equal(production.players.p.ppg, null);
+  assert.match(production.players.p.missing_stats[0], /ambiguous/);
+});

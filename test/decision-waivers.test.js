@@ -15,13 +15,13 @@ test("team strength assigns each player once across FLEX/SUPER_FLEX and excludes
 test("waivers score the full pool before truncation without using search rank or interest as usage", () => {
   const players = Array.from({ length: 100 }, (_, i) => ({ player_id: String(i), position: "RB", fantasy_positions: ["RB"], search_rank: i, trending_adds_24h: 999 }));
   const contexts = Object.fromEntries(players.map((p, i) => [p.player_id, { production: { ppg: i, recent_average: i, recorded_games: 2, usage_trend: null, scoring_status: "complete" }, schedule: { status: "scheduled" }, matchup: { rank_most: 1, defenses_measured: 32, points_per_game: 20 } }]));
-  const strengths = [{ roster_id: 1, historical_lineup: [{ slot: "RB", ppg: 10 }] }];
+  const strengths = [teamStrength({ roster_id: 1, all_players: [players[10]] }, ["RB"], Object.fromEntries(players.map(p => [p.player_id, contexts[p.player_id].production])), players, { leagueSize: 12, benchSlots: 6, allPlayers: players })];
   const result = waiverRecommendations(players, contexts, strengths, 1, players, 5);
   assert.equal(result.evaluated_count, 100);
   assert.equal(result.recommendations[0].player_id, "99");
   assert.equal(result.recommendations.length, 5);
   assert.equal(result.recommendations[0].components.usage_trend.score, null);
-  assert.equal(result.recommendations[0].coverage_percent, 90);
+  assert.equal(result.recommendations[0].coverage_percent, 65);
   assert.equal(result.recommendations[0].components.external_quality.score, null);
   assert.ok(result.recommendations.every(p => p.score >= 0 && p.score <= 100));
   contexts["99"].schedule.status = "no_scheduled_game";

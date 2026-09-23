@@ -51,3 +51,10 @@ test("snap adapter reports missing/changed sources instead of manufacturing usag
   const result = await loadSnaps(2026, { fetcher: async () => new Response("bad,data\n1,2", { status: 200 }) });
   assert.equal(result.status, "unavailable");
 });
+
+test("efficiency flags require air-yard volume and four current games", () => {
+  const efficient = history.map(h => ({ ...h, racr: 2 }));
+  assert.ok(usageSignals(efficient, 4).some(s => s.label === "Efficiency warning" && s.evidence.threshold === 1.5));
+  assert.ok(!usageSignals(efficient.map(h => ({ ...h, air_yards: 10 })), 4).some(s => s.label === "Efficiency warning"));
+  assert.ok(!usageSignals(efficient.slice(-2), 4).some(s => s.label === "Efficiency warning"));
+});
