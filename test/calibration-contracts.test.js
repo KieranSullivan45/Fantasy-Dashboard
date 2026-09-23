@@ -6,6 +6,14 @@ import { recommendationObservations, saveObservations } from "../lib/decision/ob
 import { buildDecisionContext } from "../lib/decision/build-context.js";
 import { decisionFixtureOptions } from "./decision-fixtures.js";
 import { teamStrengthV2 } from "../lib/decision/team-strength-v2.js";
+import { playerModels } from "../lib/decision/value-models.js";
+test("doubtful assets retain acquisition evidence but no available weekly start claim", () => {
+  const context = { player: { player_id: "a", position: "WR", team: "BUF", injury_status: "Doubtful" }, schedule: { status: "scheduled" },
+    production: { scoring_positions: ["WR"] }, analytics: { history: [1, 2, 3].map(week => ({ week, team: "BUF", fantasy_points: 15, targets: 8, snap_share: 0.8 })) } };
+  const model = playerModels(context, [], { season: 2026, week: 4, generatedAt: "2026-09-23" });
+  assert.equal(model.start_value.weekly_start_value, null); assert.equal(model.start_value.available_this_week, false);
+  assert.ok(model.pickup_value.central > 0);
+});
 test("red-zone import derives reproducible counts and excludes invalid/non-football opportunities", () => {
   const row = { game_id: "g", play_id: 1, season: 2025, season_type: "REG", week: 1, posteam: "BUF", rush_attempt: 1, rusher_player_id: "a", yardline_100: 5 };
   const result = highValueOpportunities([row, row, { ...row, play_id: 2, rusher_player_id: "b", yardline_100: 3 }, { ...row, play_id: 3, rush_attempt: 0, pass_attempt: 1, receiver_player_id: "a", yardline_100: 15 }, ...["no_play", "qb_kneel", "two_point_attempt"].map((key, i) => ({ ...row, play_id: i + 4, [key]: 1 })), { ...row, play_id: 9, week: 3 }], { season: 2025, beforeWeek: 3 });
