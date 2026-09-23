@@ -3,9 +3,9 @@ import assert from "node:assert/strict";
 import { buildFreeAgents, buildRosterViews, buildStandings } from "../lib/derive.js";
 
 const players = {
-  "1": { player_id: "1", first_name: "Alpha", last_name: "RB", position: "RB", fantasy_positions: ["RB"], active: true, search_rank: 10 },
-  "2": { player_id: "2", first_name: "Beta", last_name: "WR", position: "WR", fantasy_positions: ["WR"], active: true, search_rank: 20 },
-  "3": { player_id: "3", first_name: "Gamma", last_name: "RB", position: "RB", fantasy_positions: ["RB"], active: true, search_rank: 30 },
+  "1": { player_id: "1", first_name: "Alpha", last_name: "RB", position: "RB", fantasy_positions: ["RB"], team: "BUF", active: true, search_rank: 10 },
+  "2": { player_id: "2", first_name: "Beta", last_name: "WR", position: "WR", fantasy_positions: ["WR"], team: "BUF", active: true, search_rank: 20 },
+  "3": { player_id: "3", first_name: "Gamma", last_name: "RB", position: "RB", fantasy_positions: ["RB"], team: "BUF", active: true, search_rank: 30 },
 };
 
 test("free agents exclude rostered players", () => {
