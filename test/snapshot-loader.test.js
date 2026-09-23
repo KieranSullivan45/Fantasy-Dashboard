@@ -42,3 +42,14 @@ test("cleanup suppresses updates and wrong-league responses become errors", asyn
   assert.match(s.states.at(-1).error, /mismatch/);
   assert.equal(s.states.at(-1).loading, false);
 });
+
+test("a superseded response still parsing JSON cannot publish", async () => {
+  let finishJson;
+  const s = setup();
+  const a = s.loader.load("A");
+  s.pending[0].resolve({ ok: true, json: () => new Promise(resolve => { finishJson = resolve; }) });
+  await Promise.resolve();
+  const b = s.loader.load("B"); s.complete(1, "B"); await b;
+  finishJson({ league: { league_id: "A" } }); await a;
+  assert.equal(s.states.at(-1).data.league.league_id, "B");
+});

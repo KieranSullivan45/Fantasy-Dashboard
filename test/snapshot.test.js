@@ -53,6 +53,19 @@ test("old-season leagues do not masquerade as current-week matchups", async () =
   assert.ok(full.warnings.some(w => w.code === "SEASON_MISMATCH"));
 });
 
+test("transaction truncation counts unique records and missing identities are flagged", async () => {
+  const base = fixtureFetch();
+  const fetchData = async path => {
+    if (path.includes("/transactions/")) return Array.from({ length: 45 }, (_, i) => ({ transaction_id: String(i), status: "complete", type: "free_agent", created: i, adds: { MISSING: 1 } }));
+    return base(path);
+  };
+  const full = await buildLeagueSnapshot("A", { fetchData });
+  assert.deepEqual(full.truncation.recent_transactions, { total: 45, returned: 40, omitted: 5, limit: 40 });
+  assert.equal(full.recent_transactions[0].transaction_id, "44");
+  assert.ok(full.warnings.some(w => w.code === "MISSING_PLAYER_METADATA"));
+  assert.equal(compactSnapshot(full).players.MISSING.name, "MISSING");
+});
+
 test("API handles default compact, full, all, invalid league and upstream errors", async () => {
   const options = { leagueIds: ["A", "B"], buildSnapshot: (id, opts) => buildLeagueSnapshot(id, { ...opts, fetchData: fixtureFetch() }) };
   const request = query => new Request(`http://localhost/api/snapshot${query}`);
