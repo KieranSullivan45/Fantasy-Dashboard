@@ -1,5 +1,11 @@
 # Fantasy Command Center
 
+## v0.3 weekly decision support
+
+Adds actual weekly matchups, league-specific historical production, schedules, position-specific points allowed, and explainable waiver candidates evaluated across the full eligible pool. Rankings, projections and ownership remain optional/unavailable. The original `/api/snapshot` schema stays **0.2**; new metrics use `/api/decision-support` schema **0.3**.
+
+See [v0.3 contracts, sources, scoring limitations and model details](docs/v0.3.md). In particular, historical PPG is labeled partial when special-teams rules cannot be supported; it is never silently replaced with generic PPR.
+
 A read-only Sleeper dashboard built for the two configured fantasy-football leagues. It gives a human dashboard plus a compact JSON endpoint that can be used as the current league source for ChatGPT analysis.
 
 ## Configured account
