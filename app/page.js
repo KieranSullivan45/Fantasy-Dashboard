@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createSnapshotLoader } from "../lib/snapshot-loader.js";
+import { transactionPieces } from "../lib/transaction-display.js";
 
 const LEAGUES = ["1401373864818192384", "1395493939665989632"];
 const POSITIONS = ["QB", "RB", "WR", "TE", "K", "DEF"];
@@ -21,7 +22,7 @@ function PlayerRow({ player }) {
   );
 }
 
-function RosterCard({ roster }) {
+function RosterCard({ roster, settings = {} }) {
   return (
     <article className={`card rosterCard ${roster.is_user ? "mine" : ""}`}>
       <div className="cardHeader">
@@ -35,25 +36,33 @@ function RosterCard({ roster }) {
       </div>
       <h4>Starters</h4>
       <div className="compactList">
-        {roster.starters.map((p) => <PlayerRow key={p.player_id} player={p} />)}
+        {roster.starter_slots.map((entry, index) => (
+          <div key={index}>
+            <span className="muted">{entry.slot}</span>
+            {entry.player_id ? <PlayerRow player={roster.starters.find(p => p.player_id === entry.player_id)} /> : <div className="playerRow muted">Empty slot</div>}
+          </div>
+        ))}
       </div>
-      <details>
-        <summary>Bench / IR ({roster.bench.length + roster.reserve.length})</summary>
-        <div className="compactList detailsList">
-          {[...roster.bench, ...roster.reserve].map((p) => <PlayerRow key={p.player_id} player={p} />)}
-        </div>
-      </details>
+      {[["Bench", roster.bench, true], ["IR", roster.reserve, settings.reserve_slots > 0], ["Taxi", roster.taxi, settings.taxi_slots > 0]]
+        .filter(([, group, enabled]) => enabled || group.length)
+        .map(([label, group]) => (
+          <details key={label}>
+            <summary>{label} ({group.length})</summary>
+            <div className="compactList detailsList">
+              {group.map(p => <PlayerRow key={p.player_id} player={p} />)}
+              {!group.length ? <span className="muted">No players</span> : null}
+            </div>
+          </details>
+        ))}
     </article>
   );
 }
 
-function Transaction({ tx }) {
-  const pieces = [];
-  for (const add of tx.adds) pieces.push(`+ ${add.player.name} → ${add.team_name}`);
-  for (const drop of tx.drops) pieces.push(`− ${drop.player.name} ← ${drop.team_name}`);
+function Transaction({ tx, rosters }) {
+  const pieces = transactionPieces(tx, rosters);
   return (
     <div className="transaction">
-      <strong>{tx.type.replaceAll("_", " ")}</strong>
+      <strong>{tx.type.replaceAll("_", " ")} · {tx.status}</strong>
       <span>{pieces.join(" · ") || tx.teams.join(" ↔ ")}</span>
       {tx.waiver_bid !== null ? <span className="muted">FAAB {tx.waiver_bid}</span> : null}
     </div>
@@ -107,6 +116,7 @@ export default function Home() {
 
       {data ? (
         <>
+          {data.partial ? <section className="status" role="status"><strong>Some data is unavailable.</strong>{data.warnings.map((warning, index) => <div key={index}>{warning.message}</div>)}</section> : null}
           <section className="summaryGrid">
             <div className="stat"><span>League</span><strong>{data.league.name}</strong></div>
             <div className="stat"><span>Teams</span><strong>{data.league.total_rosters}</strong></div>
@@ -119,7 +129,7 @@ export default function Home() {
               <div><p className="eyebrow">ROSTER</p><h2>Your team</h2></div>
               <a href={`/api/snapshot?league=${leagueId}&compact=1`} target="_blank">Open ChatGPT snapshot ↗</a>
             </div>
-            {myTeam ? <RosterCard roster={myTeam} /> : <div className="card">Your Sleeper account is not attached to a roster in this league.</div>}
+            {myTeam ? <RosterCard roster={myTeam} settings={data.league.settings} /> : <div className="card">Your Sleeper account is not attached to a roster in this league.</div>}
           </section>
 
           <section className="section">
@@ -129,6 +139,7 @@ export default function Home() {
             </div>
             <div className="card freeAgents">
               {(data.free_agents[position] || []).slice(0, 20).map((p) => <PlayerRow key={p.player_id} player={p} />)}
+              {!data.free_agents[position]?.length ? <span className="muted">No eligible available players at this position.</span> : null}
             </div>
           </section>
 
@@ -147,8 +158,8 @@ export default function Home() {
             <div>
               <div className="sectionTitle"><div><p className="eyebrow">ACTIVITY</p><h2>Recent moves</h2></div></div>
               <div className="card activity">
-                {data.recent_transactions.slice(0, 12).map((tx) => <Transaction key={tx.transaction_id} tx={tx} />)}
-                {!data.recent_transactions.length ? <span className="muted">No recent completed transactions.</span> : null}
+                {data.recent_transactions.slice(0, 12).map((tx) => <Transaction key={tx.transaction_id} tx={tx} rosters={data.rosters} />)}
+                {!data.recent_transactions.length ? <span className="muted">No recent transactions returned.</span> : null}
               </div>
             </div>
           </section>
@@ -156,7 +167,7 @@ export default function Home() {
           <section className="section">
             <div className="sectionTitle"><div><p className="eyebrow">TRADE MAP</p><h2>Every opponent roster</h2></div></div>
             <div className="rosterGrid">
-              {opponents.map((roster) => <RosterCard key={roster.roster_id} roster={roster} />)}
+              {opponents.map((roster) => <RosterCard key={roster.roster_id} roster={roster} settings={data.league.settings} />)}
             </div>
           </section>
 
