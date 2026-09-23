@@ -37,6 +37,7 @@ test("versioned recommendation observations support append-only idempotence with
   assert.equal(rows[0].model_version, "decision-0.3.2");
   const changed = recommendationObservations({ ...d, model_version: "future" });
   assert.notEqual(changed[0].observation_id, rows[0].observation_id);
+  assert.notEqual(recommendationObservations({ ...d, implementation_revision: "policy-fix-commit" })[0].observation_id, rows[0].observation_id);
 });
 test("team v2 accounts for dual assets once across assigned starters and bench", () => {
   const players = [{ player_id: "dual", fantasy_positions: ["WR", "TE"] }, { player_id: "w", fantasy_positions: ["WR"] }, { player_id: "t", fantasy_positions: ["TE"] }];

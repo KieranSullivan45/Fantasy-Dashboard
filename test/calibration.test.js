@@ -75,6 +75,14 @@ test("immediate label requires meaningful gain, role, evidence, freshness and av
   item.roster_value.starter_gain = 6.5; assert.equal(immediateUpgrade(item, c), true);
   c.model.start_value.available_this_week = false; assert.equal(immediateUpgrade(item, c), false);
 });
+test("two-game assets without prior baselines cannot be sold cheaply as automatic drops", () => {
+  const rookie = player("rookie"), candidate = player("candidate"), elite = player("elite");
+  const c = contexts([rookie, candidate, elite], { rookie: 3, candidate: 15, elite: 40 });
+  c.rookie.model.features = { current_games: 2, prior: { ppg: null }, feature_inputs: {} };
+  const result = transactionEvaluator({ all_players: [rookie] }, ["WR"], c, { WR: { replacement_value: 5 } })(candidate);
+  assert.equal(result.best, null);
+  assert.ok(result.protected_players[0].reasons.some(r => r.startsWith("Unestablished asset")));
+});
 test("backtest membership and features cannot see future output, metric math handles ties", () => {
   const rows = history(8), before = buildCases(rows, 2023).cases.find(c => c.week === 4);
   const after = buildCases(rows.map(r => r.week >= 4 ? { ...r, points: 999, xfp: 999 } : r), 2023).cases.find(c => c.week === 4);
