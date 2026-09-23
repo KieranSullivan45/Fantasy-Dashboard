@@ -1,4 +1,5 @@
 import MatchupDifficulty from "./MatchupDifficulty.js";
+import UsageTrend from "./UsageTrend.js";
 const number = value => value == null ? "Unavailable" : value.toFixed(1);
 export default function PlayerContextCard({ context }) {
   if (!context) return <p className="muted">Weekly context unavailable for this player.</p>;
@@ -22,6 +23,18 @@ export default function PlayerContextCard({ context }) {
     <MatchupDifficulty matchup={context.matchup} />
     <p className="muted">Status: {context.player.injury_status || context.player.status || "Unavailable"}</p>
     <p className="muted">Weekly expert rank: unavailable · Consensus: unavailable · Projection: unavailable · Rostered: unavailable · Ownership change: unavailable</p>
-    <p className="muted">Sleeper 24h adds: {context.interest.sleeper_adds_24h}. Interest only; not rostered percentage or usage growth.</p>
+    <p className="muted">Sleeper 24h add interest: {context.interest.sleeper_adds_24h?.toLocaleString() ?? "Not observed"}. Available-player percentile: {number(context.interest.available_percentile)}; rank: {context.interest.available_rank ?? "Unavailable"}. {context.interest.meaning}</p>
+    <p className="muted">Platform eligibility: {context.player.fantasy_positions?.join("/") || context.player.position}. Statistical provider positions: {context.player.provider_positions?.join("/") || "Unavailable"}.</p>
+    {context.analytics ? <details className="advancedAnalytics"><summary>Usage history and advanced analytics</summary>
+      <p className="muted">{context.analytics.recorded_games} recorded games · through week {context.analytics.through_week}. Season means use recorded games; trends compare latest two with previous two. Role flags require four current games on the same team.</p>
+      <UsageTrend analytics={context.analytics} /><UsageTrend analytics={context.analytics} metric="target_share" label="Target %" /><UsageTrend analytics={context.analytics} metric="carry_share" label="Carry %" />
+      <p>Covered-rule xFP/game: {number(context.analytics.xfp?.average)} · Points over expected/game: {number(context.analytics.fantasy_points_over_expected?.average)} · {context.analytics.xfp?.games ?? 0} modeled games, through W{context.analytics.xfp?.through_week ?? "?"}. Partial models use matching supported rules, not full fantasy totals or projections.</p>
+      <div className="analyticsTable"><table><caption>Weekly role and opportunity (raw values)</caption><thead><tr>{["Week", "Snaps", "Snap %", "Targets", "Target %", "Carries", "Carry %", "Air yards", "Air share", "WOPR", "RACR", "xFP"].map(h => <th key={h}>{h}</th>)}</tr></thead><tbody>{context.analytics.history.map(h => <tr key={h.game_id}><td>{h.week}</td>{[h.snap_count, h.snap_share == null ? null : h.snap_share * 100, h.targets, h.target_share == null ? null : h.target_share * 100, h.carries, h.carry_share == null ? null : h.carry_share * 100, h.air_yards, h.air_yard_share, h.wopr, h.racr, h.opportunity_model?.expected_points].map((v, i) => <td key={i}>{number(v)}</td>)}</tr>)}</tbody></table></div>
+      <p className="muted">WOPR weights target and air-yard share; RACR is receiving yards per air yard. Usage has more weight than efficiency. Carry share includes all team carries, including QB runs.</p>
+      {context.player.fantasy_positions?.includes("QB") ? <p>Latest passing EPA per attempt or sack: {number(context.analytics.latest?.passing_epa_per_attempt_or_sack)}. Scrambles excluded from this denominator; this is not full EPA/dropback.</p> : null}
+      {context.analytics.signals.length ? context.analytics.signals.map(signal => <details key={signal.label}><summary>{signal.label}</summary><p className="muted">Evidence only, not a prediction · {signal.sample_games} games</p><pre className="evidenceJson">{JSON.stringify(signal.evidence, null, 2)}</pre></details>) : <p className="muted">No qualifying role signals. A small sample does not establish a trend.</p>}
+      <details><summary>Expected-opportunity model evidence</summary><p className="muted">{context.analytics.opportunity_contract?.basis} Component arrays: actual points, expected points, raw actual count, raw expected count, league coefficient.</p><pre className="evidenceJson">{JSON.stringify(context.analytics.history.filter(h => h.opportunity_model).map(h => ({ week: h.week, ...h.opportunity_model })), null, 2)}</pre></details>
+      <p className="muted">Red-zone opportunities and full play-by-play success rate unavailable.</p>
+    </details> : null}
   </div>;
 }

@@ -58,3 +58,44 @@ test("mobile layout retains actual matchup when optional decision data fails", a
   await expect(page.getByText("CURRENT OPPONENT")).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
+
+test("dual-position recommendations and injury stashes remain separate on mobile", async ({ page }) => {
+  const options = decisionFixtureOptions(), snapshot = await options.loadLeague(A);
+  const dual = snapshot.free_agents.RB.find(p => p.player_id === "65");
+  dual.fantasy_positions = ["RB", "WR"];
+  snapshot.free_agents.WR.push(dual);
+  snapshot.free_agents.RB.find(p => p.player_id === "64").injury_status = "IR";
+  const decision = await buildDecisionContext(A, { ...options, loadLeague: async () => snapshot });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.route("**/api/snapshot?**", route => route.fulfill({ json: snapshot }));
+  await page.route("**/api/decision-support?**", route => route.fulfill({ json: decision }));
+  await page.goto("/");
+  const recommendations = page.locator(".waiverRecommendations");
+  await expect(recommendations).toContainText("60 eligible players");
+  await page.getByLabel("Recommendation position", { exact: true }).selectOption("WR");
+  await expect(recommendations).toContainText("Player 65");
+  await expect(recommendations).toContainText("RB/WR");
+  await expect(recommendations).toContainText("Pickup Rating");
+  await page.getByLabel("Recommendation position", { exact: true }).selectOption("ALL");
+  await page.getByLabel("Recommendation type", { exact: true }).selectOption("injury_stashes");
+  await expect(recommendations).toContainText("Player 64");
+  await expect(recommendations).toContainText("no claim of availability this week");
+  await expect(recommendations).not.toContainText("Player 65");
+  await recommendations.getByText("Player context", { exact: true }).first().click();
+  await recommendations.getByText("Usage history and advanced analytics", { exact: true }).first().click();
+  await expect(recommendations).toContainText("No qualifying role signals");
+  await expect(recommendations).toContainText("Weekly role and opportunity");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test("rostered and available player summaries are visible without expanding context", async ({ page }) => {
+  const data = await fixture(A);
+  await page.route("**/api/snapshot?**", route => route.fulfill({ json: data.snapshot }));
+  await page.route("**/api/decision-support?**", route => route.fulfill({ json: data.decision }));
+  await page.goto("/");
+  await expect(page.locator(".playerQuickContext").first()).toBeVisible();
+  await expect(page.locator(".playerQuickContext").first()).toContainText("Season PPG");
+  await expect(page.locator(".playerQuickContext").first()).toContainText("Recent");
+  await expect(page.locator(".playerQuickContext").first()).toContainText("small sample");
+  await expect(page.locator(".playerContext[open]")).toHaveCount(0);
+});

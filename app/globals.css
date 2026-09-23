@@ -87,3 +87,18 @@ summary { cursor: pointer; color: var(--muted); font-size: .8rem; }
   .transaction { grid-template-columns: 1fr; gap: 3px; }
   .sectionTitle { align-items: flex-start; flex-direction: column; }
 }
+
+/* v0.3.1: concise role summaries, with wide evidence tables scrolling locally. */
+.playerQuickContext { margin: 8px 0 12px; font-size: 0.82rem; line-height: 1.65; color: #c4d7d2; }
+.usageTrend { display: block; overflow-wrap: anywhere; }
+.recommendationFilters { display: flex; flex-wrap: wrap; gap: 16px; margin: 16px 0; }
+.recommendationFilters label { display: grid; gap: 6px; min-width: 0; max-width: 100%; }
+.recommendationFilters select { max-width: 100%; }
+.analyticsTable { max-width: 100%; overflow-x: auto; margin: 12px 0; }
+.analyticsTable table { font-size: 0.8rem; border-collapse: collapse; white-space: nowrap; }
+.analyticsTable th, .analyticsTable td { padding: 7px; text-align: right; }
+.analyticsTable caption { text-align: left; }
+.advancedAnalytics { min-width: 0; }
+.evidenceJson { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.76rem; max-height: 320px; overflow: auto; }
+.waiverRecommendations .card, .playerWithContext, .contextContent { min-width: 0; }
+@media (max-width: 600px) { .recommendationFilters { display: grid; } .waiverRecommendations .cardHeader { flex-wrap: wrap; } }

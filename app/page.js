@@ -9,6 +9,8 @@ import WeeklyMatchup from "./components/WeeklyMatchup.js";
 import PlayerContextCard from "./components/PlayerContextCard.js";
 import WaiverRecommendations from "./components/WaiverRecommendations.js";
 import SourceStatus from "./components/SourceStatus.js";
+import PlayerQuickContext from "./components/PlayerQuickContext.js";
+import { leaguePositions } from "../lib/normalize/positions.js";
 
 const LEAGUES = ["1401373864818192384", "1395493939665989632"];
 const POSITIONS = ["QB", "RB", "WR", "TE", "K", "DEF"];
@@ -18,13 +20,13 @@ function PlayerRow({ player, context }) {
     <div className="playerWithContext"><div className="playerRow">
       <div>
         <strong>{player.name}</strong>
-        <span className="muted"> {player.position || ""} {player.team ? `· ${player.team}` : ""}</span>
+        <span className="muted"> {(player.fantasy_positions || [player.position]).join("/")} {player.team ? `· ${player.team}` : ""}</span>
       </div>
       <div className="badges">
         {player.injury_status ? <span className="badge warn">{player.injury_status}</span> : null}
-        {player.trending_adds_24h ? <span className="badge">+{player.trending_adds_24h}</span> : null}
+        {context?.interest?.available_rank ? <span className="badge">Sleeper interest #{context.interest.available_rank}</span> : null}
       </div>
-    </div>{context ? <details className="playerContext"><summary>Weekly context</summary><PlayerContextCard context={context} /></details> : null}</div>
+    </div><PlayerQuickContext context={context} />{context ? <details className="playerContext"><summary>Weekly context</summary><PlayerContextCard context={context} /></details> : null}</div>
   );
 }
 
@@ -154,7 +156,7 @@ export default function Home() {
           <section className="section">
             <div className="sectionTitle"><div><p className="eyebrow">WAIVERS</p><h2>Available players</h2></div></div>
             <div className="tabs">
-              {POSITIONS.map((pos) => <button key={pos} className={position === pos ? "active" : ""} onClick={() => setPosition(pos)}>{pos}</button>)}
+              {leaguePositions(data.league.roster_positions || POSITIONS).map((pos) => <button key={pos} className={position === pos ? "active" : ""} onClick={() => setPosition(pos)}>{pos}</button>)}
             </div>
             <div className="card freeAgents">
               {(data.free_agents[position] || []).slice(0, 20).map((p) => <PlayerRow key={p.player_id} player={p} context={decision?.player_context[p.player_id]} />)}
