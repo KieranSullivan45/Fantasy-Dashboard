@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { createSnapshotLoader } from "../lib/snapshot-loader.js";
 
 const LEAGUES = ["1401373864818192384", "1395493939665989632"];
 const POSITIONS = ["QB", "RB", "WR", "TE", "K", "DEF"];
@@ -61,28 +62,17 @@ function Transaction({ tx }) {
 
 export default function Home() {
   const [leagueId, setLeagueId] = useState(LEAGUES[0]);
-  const [data, setData] = useState(null);
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [snapshot, setSnapshot] = useState({ loading: true, error: "", data: null });
+  const [loader] = useState(() => createSnapshotLoader(setSnapshot));
+  const data = snapshot.leagueId === leagueId ? snapshot.data : null;
+  const error = snapshot.leagueId === leagueId ? snapshot.error : "";
+  const loading = snapshot.leagueId !== leagueId || snapshot.loading;
   const [position, setPosition] = useState("RB");
 
-  async function load(id = leagueId) {
-    setLoading(true);
-    setError("");
-    try {
-      const response = await fetch(`/api/snapshot?league=${id}&compact=1`, { cache: "no-store" });
-      const json = await response.json();
-      if (!response.ok) throw new Error(json.error || "Could not load Sleeper data");
-      setData(json);
-    } catch (e) {
-      setError(e.message || "Could not load Sleeper data");
-      setData(null);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => { load(leagueId); }, [leagueId]);
+  useEffect(() => {
+    loader.load(leagueId);
+    return () => loader.cancel();
+  }, [leagueId, loader]);
 
   const myTeam = data?.my_roster;
   const opponents = useMemo(
@@ -102,7 +92,7 @@ export default function Home() {
           <select value={leagueId} onChange={(e) => setLeagueId(e.target.value)} aria-label="League">
             {LEAGUES.map((id) => <option key={id} value={id}>{data?.league?.league_id === id ? data.league.name : id}</option>)}
           </select>
-          <button onClick={() => load()}>Refresh</button>
+          <button onClick={() => loader.load(leagueId)}>Refresh</button>
         </div>
       </header>
 
