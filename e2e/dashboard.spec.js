@@ -1,3 +1,4 @@
+async function controls(page) { if (!await page.getByLabel("League", {exact:true}).isVisible()) await page.getByText("Switch league or season", {exact:true}).click(); }
 import { test, expect } from "@playwright/test";
 import { buildLeagueSnapshot } from "../lib/sleeper.js";
 import { fixtureFetch } from "../test/fixtures.js";
@@ -23,13 +24,14 @@ test("full roster sections, empty slots, picks and FAAB render for both teams", 
   const mine = page.locator(".rosterCard.mine");
   await expect(mine.getByText("Empty slot")).toBeVisible();
   for (const [section, player] of [["Bench (1)", "Player 1"], ["IR (1)", "Player 3"], ["Taxi (1)", "Player 4"]]) {
-    await mine.getByText(section, { exact: true }).click();
+    const toggle = mine.getByRole("button", { name: new RegExp(section.replace(/[()]/g,"\\$&")) });
+    if (await toggle.getAttribute("aria-expanded") !== "true") await toggle.click();
     await expect(mine.getByText(player, { exact: true })).toBeVisible();
   }
   await page.locator('nav:visible a[href="/dashboard/league"]').click();
   await page.getByRole("button", { name: "Teams", exact: true }).click();
   await page.getByLabel("League team").selectOption("2");
-  await expect(page.locator(".rosterCard:not(.mine)").getByText("Taxi (0)")).toBeVisible();
+  await expect(page.locator(".rosterCard:not(.mine)").getByRole("button", {name:"Taxi (0)"})).toBeVisible();
   await page.getByRole("button", { name: "Activity", exact: true }).click();
   await expect(page.locator(".activity")).toContainText("2027 round 1 pick");
   await expect(page.locator(".activity")).toContainText("FAAB 15");
@@ -47,7 +49,7 @@ test("rapid league switching hides old data and ignores superseded responses", a
   await expect(page.locator(".summaryGrid")).toContainText("League Alpha");
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
   await expect.poll(() => pending.length).toBe(2);
-  await page.getByLabel("League", { exact: true }).selectOption(B);
+  await controls(page); await page.getByLabel("League", { exact: true }).selectOption(B);
   await expect.poll(() => pending.length).toBe(3);
   await expect(page.locator(".summaryGrid")).toHaveCount(0);
   await pending[2].fulfill({ json: await snapshot(B) });
@@ -55,7 +57,7 @@ test("rapid league switching hides old data and ignores superseded responses", a
   await pending[1].fulfill({ status: 502, json: { error: "Late failure" } });
   await expect(page.locator(".summaryGrid")).toContainText("League Beta");
   await expect(page.getByText("Late failure")).toHaveCount(0);
-  await page.getByLabel("League", { exact: true }).selectOption(A);
+  await controls(page); await page.getByLabel("League", { exact: true }).selectOption(A);
   await expect.poll(() => pending.length).toBe(4);
   await pending[3].fulfill({ json: await snapshot(A) });
   await expect(page.locator(".summaryGrid")).toContainText("League Alpha");

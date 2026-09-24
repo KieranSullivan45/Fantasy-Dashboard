@@ -1,3 +1,4 @@
+async function controls(page) { if (!await page.getByLabel("League", {exact:true}).isVisible()) await page.getByText("Switch league or season", {exact:true}).click(); }
 import { test, expect } from "@playwright/test";
 import { buildDecisionContext } from "../lib/decision/build-context.js";
 import { decisionFixtureOptions } from "../test/decision-fixtures.js";
@@ -30,7 +31,7 @@ test("mobile routes, active state, history, shared data and preserved filters", 
   await page.goForward(); await expect(page).toHaveURL(/\/lineup$/);
   await nav(page,"Waivers").click(); await expect(page.getByLabel("Recommendation type")).toHaveValue("injury_stashes");
   expect(counts).toEqual({snapshot:1,decision:1});
-  await nav(page,"Signals").click(); await page.getByLabel("League",{exact:true}).selectOption(B);
+  await nav(page,"Signals").click(); await controls(page); await page.getByLabel("League",{exact:true}).selectOption(B);
   await expect(page.locator(".accountToolbar")).toContainText("Beta"); await expect(page).toHaveURL(/\/signals$/);
   await expect(page.getByLabel("Signal group")).toHaveValue("FALLERS");
   await page.reload(); await expect(page).toHaveURL(/\/signals$/); await expect(page.getByRole("region",{name:"Signal Feed",exact:true})).toBeVisible();
@@ -66,7 +67,8 @@ test("desktop destinations, player search, bounded results and bookmarkable deta
   await expect(page.getByRole("navigation",{name:"Desktop navigation"})).toBeVisible();
   await expect(page.getByRole("navigation",{name:"Mobile navigation"})).toBeHidden();
   await nav(page,"Players").click();
-  await expect(page.locator(".playerResults article")).toHaveCount(15);
+  await expect(page.locator(".playerResults article")).toHaveCount(0);
+  await page.getByRole("button",{name:"Browse returned players"}).click(); await expect(page.locator(".playerResults article")).toHaveCount(15);
   await page.getByLabel("Search players").fill("Player 65"); await expect(page.locator(".playerResults article")).toHaveCount(1);
   await page.locator(".playerResults a").click(); await expect(page).toHaveURL(/players\?player=65$/);
   await expect(page.locator(".playerDetail h2")).toHaveText("Player 65");
@@ -81,7 +83,7 @@ test("valid season discovery preserves section; direct routes do not require vis
   await setup(page);
   await page.route("**/api/accounts?**", route=>route.fulfill({json:{season:2027,account:{provider_user_id:"1395496956687581184",username:"Friend"},leagues:[{league_id:B,name:"Next season",season:2027}]}}));
   await page.goto("/dashboard/lineup"); await expect(page.locator(".rosterCard.mine")).toBeVisible();
-  await page.getByLabel("NFL season",{exact:true}).fill("2027"); await page.getByRole("button",{name:"Discover season",exact:true}).click();
+  await controls(page); await page.getByLabel("NFL season",{exact:true}).fill("2027"); await page.getByRole("button",{name:"Discover season",exact:true}).click();
   await expect(page.getByLabel("League",{exact:true})).toHaveValue(B); await expect(page).toHaveURL(/\/lineup$/);
   await expect(page.getByLabel("NFL season",{exact:true})).toHaveValue("2027");
   await expect(page.locator(".rosterCard.mine")).toBeVisible();

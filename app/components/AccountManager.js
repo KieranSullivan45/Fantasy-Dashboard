@@ -50,7 +50,7 @@ export default function AccountManager({ onChange, selection, rosters = [], leag
     finally { if (request === generation.current) setBusy(false); }
   }
   return <section className="card accountManager" aria-label="Accounts and leagues">
-    <details className="accountDetails" open={management}><summary>Accounts, leagues and season</summary>
+    <details className="accountSwitch" open={management}><summary><strong>{leagueName || "Choose league"}</strong> · {selection.season || season}<span>Switch league or season</span></summary><details className="accountDetails" open={management}><summary>Accounts, leagues and season</summary>
       <p className="muted">Public read-only Sleeper access. Selections stay in this browser; entering a username does not authenticate as that person. Automatic history capture covers installation-configured leagues only.</p>
       <div className="accountFields">
         <form onSubmit={e => { e.preventDefault(); discover({ username, season }); }}><label>Sleeper username <input value={username} onChange={e => setUsername(e.target.value)} required maxLength={40} /></label><button disabled={busy}>Add account</button></form>
@@ -64,6 +64,7 @@ export default function AccountManager({ onChange, selection, rosters = [], leag
       {!selection.userId && rosters.length ? <label>Analyze roster <select aria-label="Analyze roster" value={selection.rosterId || ""} onChange={e => publish(leagues, { ...selection, rosterId: e.target.value ? Number(e.target.value) : null })}><option value="">Spectator — no “my roster”</option>{rosters.map(r => <option key={r.roster_id} value={r.roster_id}>{r.team_name}</option>)}</select></label> : null}
       <span className="muted accountContext">{busy ? "Discovering…" : `${accounts.find(a => a.provider_user_id === selection.userId)?.username || (selection.userId ? "Connected account" : "Spectator")} · ${leagues.length} leagues`}</span>
     </div>
+    </details>
     {error ? <p className="status error" role="alert">{error}</p> : null}
   </section>;
 }

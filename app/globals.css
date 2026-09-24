@@ -188,3 +188,36 @@ summary { display: list-item; padding: 12px 0; font-size: .875rem; }
   .homeCard { padding: 14px; }
   .routeContent .contextMetrics { gap: 8px; }
 }
+/* v0.3.3.2: summaries first; analytics mount only on demand. */
+.accountSwitch > summary { display:flex; align-items:center; flex-wrap:wrap; gap:6px; padding:2px 0; font-size:.9rem; }
+.accountSwitch > summary span { margin-left:auto; color:var(--accent); }
+.accountSwitch[open] > summary { margin-bottom:8px; }
+.accountSwitch .accountDetails { margin-top:8px; }
+.compactCard { padding:12px; }
+.compactCard h3 { font-size:1rem; margin:0; }
+.compactCard .cardHeader { display:block; margin-bottom:6px; }
+.compactCard .pill { display:inline-block; margin-top:5px; }
+.compactCard .pill { font-size:.875rem; }
+.compactCard p, .compactPlayer p { margin:5px 0; }
+.compactMetrics { font-size:.9rem; line-height:1.5; }
+.compactNote { color:var(--muted); font-size:.875rem; line-height:1.45; margin:8px 0; }
+.detailToggle { background:transparent; color:var(--accent); border:0; padding:8px 0; min-height:44px; text-align:left; }
+.detailBody { padding:8px 0; border-top:1px solid var(--line); }
+.compactPlayer { padding:5px 0; }
+.signalType { font-size:.9rem; font-weight:650; }
+.signalRecord { border-bottom:1px solid var(--line); padding:10px 0; }
+.waiverRecommendations .rosterGrid, .signalGrid { gap:10px; margin-bottom:12px; }
+.recommendationFilters { margin:8px 0; }
+.recommendationFilters label { font-size:.875rem; }
+.playerResults article { padding:12px; }
+@media(max-width:767px) {
+ .accountManager { padding:4px 10px; }
+ .routeContent { padding-top:12px; }
+ .routeContent h1 { margin-bottom:10px; }
+ .routeContent .section { margin-top:10px; }
+ .recommendationFilters { display:grid; grid-template-columns:minmax(0,2fr) minmax(0,1fr); gap:8px; }
+ .recommendationFilters label { min-width:0; }
+ .recommendationFilters select { width:100%; padding:8px 4px; }
+ .signalGrid, .waiverRecommendations .rosterGrid { grid-template-columns:1fr; }
+ .accountSwitch summary strong { max-width:100%; overflow-wrap:anywhere; }
+}
