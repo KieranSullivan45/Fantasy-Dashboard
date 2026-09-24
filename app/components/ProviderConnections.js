@@ -1,0 +1,14 @@
+"use client";
+import {useState,useRef,useEffect} from "react";
+import {normalizeEspn} from "../../lib/providers/espn-normalize.js";
+export default function ProviderConnections(){
+ const [provider,setProvider]=useState("sleeper"),[preview,setPreview]=useState(null),[error,setError]=useState(""),[raw,setRaw]=useState(null),[roster,setRoster]=useState("");
+ const generation=useRef(0);
+ useEffect(()=>()=>{generation.current++},[]);
+ const clear=()=>{generation.current++;setPreview(null);setRaw(null);setRoster("");setError("")};
+ async function imported(e){const input=e.target,file=input.files?.[0];clear();const request=generation.current;try{if(!file)return;if(file.size>2000000)throw Error("Import exceeds the 2 MB limit.");const data=JSON.parse(await file.text());const normalized=normalizeEspn(data);if(request!==generation.current)return;setRaw(data);setPreview(normalized);}catch{if(request===generation.current)setError("Import rejected. Use an authorized league JSON object under 2 MB, with teams, roster/scoring settings and no authentication fields.");}input.value="";}
+ return <section className="card homeCard" aria-label="Fantasy providers"><h2>Add fantasy provider</h2><label>Provider <select value={provider} onChange={e=>{clear();setProvider(e.target.value)}}><option value="sleeper">Sleeper</option><option value="espn">ESPN · offline preview</option></select></label>
+ {provider==="sleeper"?<p>Use the Sleeper username or direct league controls above. Current connections remain available while inspecting another provider.</p>:<><p>ESPN live synchronization is unavailable. Public visibility does not establish API permission. Private login, passwords and session cookies are not accepted.</p><p>Preview a league JSON file you are authorized to use. It stays in this tab's memory: no upload, browser storage, history capture or assistant access. This preview does not run waiver recommendations.</p><label>Authorized ESPN league JSON <input type="file" accept="application/json,.json" onChange={imported}/></label>{error?<p role="alert">{error}</p>:null}
+ {preview?<><p><strong>{preview.league.name}</strong> · ESPN · {preview.league.season} · {preview.rosters.length} teams</p><label>Preview roster <select value={roster} onChange={e=>{setRoster(e.target.value);setPreview(normalizeEspn(raw,{rosterId:e.target.value?Number(e.target.value):null}))}}><option value="">Spectator — no team assumed</option>{preview.rosters.map(r=><option key={r.roster_id} value={r.roster_id}>{r.team_name}</option>)}</select></label><p>{preview.my_roster?`Selected team: ${preview.my_roster.team_name}`:"Spectator mode"}</p><details><summary>Normalized league, rosters and limitations</summary><pre className="evidenceJson">{JSON.stringify(preview,null,2)}</pre></details><button onClick={clear}>Remove imported preview</button></>:null}</>}
+ </section>;
+}

@@ -221,3 +221,8 @@ summary { display: list-item; padding: 12px 0; font-size: .875rem; }
  .signalGrid, .waiverRecommendations .rosterGrid { grid-template-columns:1fr; }
  .accountSwitch summary strong { max-width:100%; overflow-wrap:anywhere; }
 }
+/* Provider preview controls must fit narrow mobile cards. */
+[aria-label="Fantasy providers"] { min-width:0; overflow-wrap:anywhere; }
+[aria-label="Fantasy providers"] label { display:block; min-width:0; }
+[aria-label="Fantasy providers"] input, [aria-label="Fantasy providers"] select { max-width:100%; box-sizing:border-box; }
+[aria-label="Fantasy providers"] pre { white-space:pre-wrap; overflow-wrap:anywhere; }
