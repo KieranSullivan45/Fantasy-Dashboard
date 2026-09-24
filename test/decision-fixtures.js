@@ -5,6 +5,8 @@ export function decisionFixtureOptions() {
   const rows = Array.from({ length: 65 }, (_, i) => [1, 2].map(week => ({ player_id: `g${i + 1}`, position: "RB", season: "2026", season_type: "REG", week: String(week), game_id: `game${week}`, team: "BUF", opponent_team: "NE", receptions: String(i), passing_tds: "0", targets: String(i), carries: "0" }))).flat();
   return {
     now: Date.parse("2026-09-23"),
+    highValueSource: async () => ({ source_id: "nflverse_high_value", status: "unavailable", data: null, warnings: ["Fixture has no PBP"] }),
+    marketHistorySource: async () => ({ status: "unavailable", data: null }),
     snapSource: async () => source("nflverse_snaps", []),
     opportunitySource: async () => source("ffopportunity", []),
     loadLeague: id => buildLeagueSnapshot(id, { fetchData: fixtureFetch(), freeAgentLimit: Number.MAX_SAFE_INTEGER }),
