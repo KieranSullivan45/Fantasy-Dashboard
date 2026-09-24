@@ -33,6 +33,8 @@ export default function PlayerContextCard({ context }) {
     <p className="muted">Weekly expert rank: unavailable · Consensus: unavailable · Projection: unavailable · Rostered: unavailable · Ownership change: unavailable</p>
     <p className="muted">Sleeper 24h add interest: {context.interest.sleeper_adds_24h?.toLocaleString() ?? "Not observed"}. Available-player percentile: {number(context.interest.available_percentile)}; rank: {context.interest.available_rank ?? "Unavailable"}. {context.interest.meaning}</p>
     <p className="muted">Platform eligibility: {context.player.fantasy_positions?.join("/") || context.player.position}. Statistical provider positions: {context.player.provider_positions?.join("/") || "Unavailable"}.</p>
+    {context.market_attention ? <p className="muted">Archived add-interest change: {context.market_attention.change == null ? "No comparable prior window" : context.market_attention.change.toLocaleString()}. Social buzz and sentiment unavailable; attention does not change FootballValue.</p> : null}
+    {context.high_value ? <details><summary>High-value opportunity evidence</summary><p className="muted">Through W{context.high_value.data_through_week}. Informational only; calibrated forecast weights are unchanged. End-zone targets unsupported.</p><pre className="evidenceJson">{JSON.stringify(context.high_value, null, 2)}</pre></details> : null}
     {context.analytics ? <details className="advancedAnalytics"><summary>Usage history and advanced analytics</summary>
       <p className="muted">{context.analytics.recorded_games} recorded games · through week {context.analytics.through_week}. Season means use recorded games; trends compare latest two with previous two. Role flags require four current games on the same team.</p>
       {context.analytics.role_warning ? <p className="muted">{context.analytics.role_warning}</p> : null}
@@ -43,7 +45,7 @@ export default function PlayerContextCard({ context }) {
       {context.player.fantasy_positions?.includes("QB") ? <p>Latest passing EPA per attempt or sack: {number(context.analytics.latest?.passing_epa_per_attempt_or_sack)}. Scrambles excluded from this denominator; this is not full EPA/dropback.</p> : null}
       {context.analytics.signals.length ? context.analytics.signals.map(signal => <details key={signal.label}><summary>{signal.label}</summary><p className="muted">Evidence only, not a prediction · {signal.sample_games} games</p><pre className="evidenceJson">{JSON.stringify(signal.evidence, null, 2)}</pre></details>) : <p className="muted">No qualifying role signals. A small sample does not establish a trend.</p>}
       <details><summary>Expected-opportunity model evidence</summary><p className="muted">{context.analytics.opportunity_contract?.basis} Component arrays: actual points, expected points, raw actual count, raw expected count, league coefficient.</p><pre className="evidenceJson">{JSON.stringify(context.analytics.history.filter(h => h.opportunity_model).map(h => ({ week: h.week, ...h.opportunity_model })), null, 2)}</pre></details>
-      <p className="muted">Red-zone opportunities and full play-by-play success rate unavailable.</p>
+      <p className="muted">Full play-by-play success rate unavailable. Red-zone coverage is reported separately above.</p>
     </details> : null}
   </div>;
 }

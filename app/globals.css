@@ -102,3 +102,10 @@ summary { cursor: pointer; color: var(--muted); font-size: .8rem; }
 .evidenceJson { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.76rem; max-height: 320px; overflow: auto; }
 .waiverRecommendations .card, .playerWithContext, .contextContent { min-width: 0; }
 @media (max-width: 600px) { .recommendationFilters { display: grid; } .waiverRecommendations .cardHeader { flex-wrap: wrap; } }
+.accountManager { margin-bottom: 1rem; }
+.accountFields { display: flex; flex-wrap: wrap; gap: .8rem; align-items: flex-end; margin-top: .8rem; }
+.accountFields form, .accountFields label { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; min-width: 0; }
+.accountFields input, .accountFields select { max-width: 100%; min-width: 0; padding: .5rem; }
+.accountFields input { width: 12rem; }
+.signalGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 1rem; }
+.signalGrid article { min-width: 0; overflow-wrap: anywhere; }

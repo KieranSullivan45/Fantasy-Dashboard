@@ -1,9 +1,11 @@
 import { test, expect } from "@playwright/test";
 import { buildLeagueSnapshot } from "../lib/sleeper.js";
 import { fixtureFetch } from "../test/fixtures.js";
+import { mockDefaultAccounts } from "./accounts-fixture.js";
 
 const A = "1401373864818192384", B = "1395493939665989632";
 test.beforeEach(async ({ page }) => {
+  await mockDefaultAccounts(page);
   await page.route("**/api/decision-support?**", route => route.fulfill({ status: 503, json: { error: "Decision provider unavailable in baseline test" } }));
 });
 async function snapshot(id) {
@@ -28,7 +30,7 @@ test("full roster sections, empty slots, picks and FAAB render for both teams", 
   await expect(page.locator(".activity")).toContainText("2027 round 1 pick");
   await expect(page.locator(".activity")).toContainText("FAAB 15");
   await expect(page.locator(".activity")).toContainText("FAAB 0");
-  await expect(page.getByRole("link", { name: /Open ChatGPT snapshot/ })).toHaveAttribute("href", `/api/snapshot?league=${A}&compact=1`);
+  await expect(page.getByRole("link", { name: /Open ChatGPT snapshot/ })).toHaveAttribute("href", `/api/snapshot?league=${A}&compact=1&user=1395496956687581184`);
 });
 
 test("rapid league switching hides old data and ignores superseded responses", async ({ page }) => {

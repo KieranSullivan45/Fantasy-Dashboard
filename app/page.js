@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { createSnapshotLoader } from "../lib/snapshot-loader.js";
+import { createSnapshotLoader, selectionKey } from "../lib/snapshot-loader.js";
 import { transactionPieces } from "../lib/transaction-display.js";
 import { createDecisionLoader } from "../lib/decision-loader.js";
 import { decisionBasis } from "../lib/decision/basis.js";
@@ -11,8 +11,9 @@ import WaiverRecommendations from "./components/WaiverRecommendations.js";
 import SourceStatus from "./components/SourceStatus.js";
 import PlayerQuickContext from "./components/PlayerQuickContext.js";
 import { leaguePositions } from "../lib/normalize/positions.js";
+import AccountManager from "./components/AccountManager.js";
+import SignalFeed from "./components/SignalFeed.js";
 
-const LEAGUES = ["1401373864818192384", "1395493939665989632"];
 const POSITIONS = ["QB", "RB", "WR", "TE", "K", "DEF"];
 
 function PlayerRow({ player, context }) {
@@ -78,12 +79,13 @@ function Transaction({ tx, rosters }) {
 }
 
 export default function Home() {
-  const [leagueId, setLeagueId] = useState(LEAGUES[0]);
+  const [selection, setSelection] = useState({ leagueId: "", userId: null, season: null, rosterId: null });
+  const leagueId = selection.leagueId, activeKey = selectionKey(leagueId, selection);
   const [snapshot, setSnapshot] = useState({ loading: true, error: "", data: null });
   const [loader] = useState(() => createSnapshotLoader(setSnapshot));
-  const data = snapshot.leagueId === leagueId ? snapshot.data : null;
-  const error = snapshot.leagueId === leagueId ? snapshot.error : "";
-  const loading = snapshot.leagueId !== leagueId || snapshot.loading;
+  const data = snapshot.selectionKey === activeKey ? snapshot.data : null;
+  const error = snapshot.selectionKey === activeKey ? snapshot.error : "";
+  const loading = !!leagueId && (snapshot.selectionKey !== activeKey || snapshot.loading);
   const [position, setPosition] = useState("RB");
   const [decisionState, setDecisionState] = useState({ data: null, loading: false, error: "" });
   const [decisionLoader] = useState(() => createDecisionLoader(setDecisionState));
@@ -91,9 +93,9 @@ export default function Home() {
   const decision = decisionState.basis === basis ? decisionState.data : null;
 
   useEffect(() => {
-    loader.load(leagueId);
+    if (leagueId) loader.load(leagueId, selection);
     return () => loader.cancel();
-  }, [leagueId, loader]);
+  }, [activeKey, loader]);
 
   useEffect(() => {
     if (data) decisionLoader.load(data);
@@ -115,12 +117,10 @@ export default function Home() {
           <p className="subhead">A live league source of truth for roster, waiver and trade analysis.</p>
         </div>
         <div className="controls">
-          <select value={leagueId} onChange={(e) => setLeagueId(e.target.value)} aria-label="League">
-            {LEAGUES.map((id) => <option key={id} value={id}>{data?.league?.league_id === id ? data.league.name : id}</option>)}
-          </select>
-          <button onClick={() => loader.load(leagueId)}>Refresh</button>
+          <button disabled={!leagueId} onClick={() => loader.load(leagueId, selection)}>Refresh</button>
         </div>
       </header>
+      <AccountManager onChange={setSelection} selection={selection} rosters={data?.rosters || []} />
 
       {loading ? <section className="status">Syncing live Sleeper data…</section> : null}
       {error ? (
@@ -143,11 +143,12 @@ export default function Home() {
 
           <WeeklyMatchup snapshot={data} decision={decision} />
           {decision ? <SourceStatus data={decision} /> : <p className="muted">{decisionState.basis === basis && decisionState.error ? decisionState.error : "Loading weekly player context…"}</p>}
+          {decision ? <SignalFeed data={decision} /> : null}
 
           <section className="section">
             <div className="sectionTitle">
               <div><p className="eyebrow">ROSTER</p><h2>Your team</h2></div>
-              <a href={`/api/snapshot?league=${leagueId}&compact=1`} target="_blank">Open ChatGPT snapshot ↗</a>
+              <a href={`/api/chat/league-summary?${new URLSearchParams({ league: leagueId, user: selection.userId || "spectator", ...(selection.rosterId ? { roster: String(selection.rosterId) } : {}) })}`} target="_blank">Open assistant summary ↗</a>
             </div>
             {myTeam ? <RosterCard roster={myTeam} settings={data.league.settings} contexts={decision?.player_context} /> : <div className="card">Your Sleeper account is not attached to a roster in this league.</div>}
           </section>
@@ -196,7 +197,9 @@ export default function Home() {
             <p className="eyebrow">FOR CHATGPT</p>
             <h2>Machine-readable snapshot</h2>
             <p>This endpoint is intentionally read-only. Once the site is deployed, the live URL can be used as the current league source instead of screenshots.</p>
-            <code>/api/snapshot?league={leagueId}&compact=1</code>
+            <a href={`/api/snapshot?${new URLSearchParams({ league: leagueId, compact: "1", user: selection.userId || "spectator", ...(selection.rosterId ? { roster: selection.rosterId } : {}) })}`}>Open ChatGPT snapshot</a>
+            <p><a href={`/api/chat/league-summary?${new URLSearchParams({ league: leagueId, user: selection.userId || "spectator", ...(selection.rosterId ? { roster: selection.rosterId } : {}) })}`}>Open decision summary</a></p>
+            <a href={`/api/chat/history?${new URLSearchParams({ league: leagueId, user: selection.userId || "spectator" })}`}>Recorded recommendation history</a>
           </section>
         </>
       ) : null}

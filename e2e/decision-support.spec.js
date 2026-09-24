@@ -1,6 +1,8 @@
 import { test, expect } from "@playwright/test";
 import { buildDecisionContext } from "../lib/decision/build-context.js";
 import { decisionFixtureOptions } from "../test/decision-fixtures.js";
+import { mockDefaultAccounts } from "./accounts-fixture.js";
+test.beforeEach(async ({ page }) => { await mockDefaultAccounts(page); });
 const A = "1401373864818192384", B = "1395493939665989632";
 async function fixture(id) {
   const options = decisionFixtureOptions();
