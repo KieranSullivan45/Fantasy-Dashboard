@@ -2,9 +2,12 @@ import PlayerContextCard from "./PlayerContextCard.js";
 import PlayerQuickContext from "./PlayerQuickContext.js";
 import { useState } from "react";
 import { leaguePositions } from "../../lib/normalize/positions.js";
-export default function WaiverRecommendations({ data }) {
-  const [position, setPosition] = useState("ALL");
-  const [category, setCategory] = useState("immediate_upgrades");
+export default function WaiverRecommendations({ data, filters, onFilters }) {
+  const [local, setLocal] = useState({ position: "ALL", category: "immediate_upgrades" });
+  const state = filters || local, update = onFilters || setLocal;
+  const position = state.position === "ALL" || leaguePositions(data.league.roster_positions).includes(state.position) ? state.position : "ALL";
+  const category = data.waivers.categories?.[state.category] ? state.category : "best_overall";
+  const setPosition = value => update({ ...state, position: value }), setCategory = value => update({ ...state, category: value });
   const categories = data.waivers.categories;
   const selected = categories?.[category];
   const items = selected ? selected.players.map(p => data.waivers.candidate_details?.[p.player_id] || p) : data.waivers.recommendations;
@@ -21,7 +24,9 @@ export default function WaiverRecommendations({ data }) {
       <div className="cardHeader"><h3>{data.player_context[item.player_id]?.player.name || item.player_id} <span className="muted">{(item.fantasy_positions || [item.position]).join("/")}</span></h3><span className="pill">Pickup Rating {item.pickup_rating == null ? "Unavailable" : item.pickup_rating.toFixed(1)}</span></div>
       <p>{(item.recommendation_types || []).map(type => categories?.[type]?.label || type).join(" · ")}</p>
       <p className="muted">Evidence coverage {item.coverage_percent}%{item.small_sample ? " · small sample" : ""}{item.scoring_status === "partial" ? " · partial historical scoring" : ""}</p>
-      {(item.explanations || []).map(text => <p className="muted" key={text}>{text}</p>)}
+      <p className="transactionHeadline">{item.explanations?.find(text => text.startsWith("ADD ")) || "Review legal transaction evidence"}</p>
+      <p className="muted">Starter gain {item.roster_value.starter_gain?.toFixed(1) ?? "—"} · Depth change {item.roster_value.depth_gain?.toFixed(1) ?? "—"} · Net roster heuristic {item.roster_value.net_roster_improvement?.toFixed(1) ?? "—"}</p>
+      <details><summary>Recommendation notes</summary>{(item.explanations || []).map(text => <p className="muted" key={text}>{text}</p>)}</details>
       <PlayerQuickContext context={data.player_context[item.player_id]} />
       <details><summary>Score components</summary><div className="scoreComponents">{Object.entries(item.components).map(([key, component]) => <div key={key}>
         <strong>{key.replaceAll("_", " ")}: {component.score == null ? "Unavailable" : `${component.score.toFixed(1)} × ${component.weight}% = ${component.contribution.toFixed(1)}`}</strong>

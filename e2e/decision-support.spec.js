@@ -17,11 +17,13 @@ test("weekly actuals, player history, source limits and explainable waivers rend
   const data = await fixture(A);
   await page.route("**/api/snapshot?**", route => route.fulfill({ json: data.snapshot }));
   await page.route("**/api/decision-support?**", route => route.fulfill({ json: data.decision }));
-  await page.goto("/");
+  await page.goto("/dashboard/lineup");
+  await page.getByRole("button", { name: "Matchup", exact: true }).click();
   const matchup = page.getByRole("region", { name: "Weekly matchup", exact: true });
   await expect(matchup.getByText("CURRENT OPPONENT")).toBeVisible();
   await expect(matchup).toContainText("actual points");
   await expect(matchup).toContainText("projections unavailable");
+  await page.locator('nav:visible a[href="/dashboard/waivers"]').click();
   const recommendations = page.getByRole("region", { name: "Waiver recommendations", exact: true });
   await expect(recommendations).toContainText("60 eligible players evaluated before truncation");
   await page.getByLabel("Recommendation type", { exact: true }).selectOption("best_overall");
@@ -32,6 +34,7 @@ test("weekly actuals, player history, source limits and explainable waivers rend
   await expect(recommendations).toContainText("Rostered: unavailable");
   await expect(recommendations).toContainText("W2 vs NE");
   await expect(recommendations).toContainText("most RB points allowed");
+  await page.locator('nav:visible a[href="/dashboard/more"]').click();
   await page.getByText("Data sources, coverage and limitations").click();
   await expect(page.locator(".sourceStatus")).toContainText("ownership: unsupported");
 });
@@ -40,14 +43,14 @@ test("late decision responses cannot overwrite a newly selected league", async (
   const a = await fixture(A), b = await fixture(B), pending = [];
   await page.route("**/api/snapshot?**", route => route.fulfill({ json: new URL(route.request().url()).searchParams.get("league") === A ? a.snapshot : b.snapshot }));
   await page.route("**/api/decision-support?**", route => { pending.push(route); });
-  await page.goto("/");
+  await page.goto("/dashboard/waivers");
   await expect.poll(() => pending.length).toBe(1);
   await page.getByLabel("League", { exact: true }).selectOption(B);
   await expect.poll(() => pending.length).toBe(2);
   await pending[1].fulfill({ json: b.decision });
   await expect(page.locator(".waiverRecommendations")).toBeVisible();
   await pending[0].fulfill({ status: 502, json: { error: "Old decision failure" } });
-  await expect(page.locator(".summaryGrid")).toContainText("Beta");
+  await expect(page.locator(".accountToolbar")).toContainText("Beta");
   await expect(page.getByText("Old decision failure")).toHaveCount(0);
 });
 
@@ -56,7 +59,8 @@ test("mobile layout retains actual matchup when optional decision data fails", a
   await page.setViewportSize({ width: 390, height: 844 });
   await page.route("**/api/snapshot?**", route => route.fulfill({ json: data.snapshot }));
   await page.route("**/api/decision-support?**", route => route.fulfill({ status: 502, json: { error: "Weekly metrics unavailable" } }));
-  await page.goto("/");
+  await page.goto("/dashboard/lineup");
+  await page.getByRole("button", { name: "Matchup", exact: true }).click();
   await expect(page.getByText("Weekly metrics unavailable")).toBeVisible();
   await expect(page.getByText("CURRENT OPPONENT")).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -72,7 +76,7 @@ test("dual-position recommendations and injury stashes remain separate on mobile
   await page.setViewportSize({ width: 390, height: 844 });
   await page.route("**/api/snapshot?**", route => route.fulfill({ json: snapshot }));
   await page.route("**/api/decision-support?**", route => route.fulfill({ json: decision }));
-  await page.goto("/");
+  await page.goto("/dashboard/waivers");
   const recommendations = page.locator(".waiverRecommendations");
   await expect(recommendations).toContainText("60 eligible players");
   await page.getByLabel("Recommendation position", { exact: true }).selectOption("WR");
@@ -96,7 +100,7 @@ test("rostered and available player summaries are visible without expanding cont
   const data = await fixture(A);
   await page.route("**/api/snapshot?**", route => route.fulfill({ json: data.snapshot }));
   await page.route("**/api/decision-support?**", route => route.fulfill({ json: data.decision }));
-  await page.goto("/");
+  await page.goto("/dashboard/lineup");
   await expect(page.locator(".playerQuickContext").first()).toBeVisible();
   await expect(page.locator(".playerQuickContext").first()).toContainText("Season PPG");
   await expect(page.locator(".playerQuickContext").first()).toContainText("Recent");
@@ -109,8 +113,9 @@ test("calibrated model distinguishes add/drop evidence, start value and acquisit
   await page.setViewportSize({ width: 390, height: 844 });
   await page.route("**/api/snapshot?**", route => route.fulfill({ json: data.snapshot }));
   await page.route("**/api/decision-support?**", route => route.fulfill({ json: data.decision }));
-  await page.goto("/");
+  await page.goto("/dashboard/waivers");
   const region = page.locator(".waiverRecommendations");
+  await page.getByLabel("Recommendation type", { exact: true }).selectOption("immediate_upgrades");
   await expect(region).toContainText("No ALL candidates with qualifying evidence");
   await page.getByLabel("Recommendation type", { exact: true }).selectOption("best_overall");
   await expect(region).toContainText("ADD Player 65");
