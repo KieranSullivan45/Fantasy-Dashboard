@@ -25,6 +25,9 @@ test("clean friend onboarding, multiple accounts, leagues, future seasons and di
   await page.route("**/api/snapshot?**", async route => { const p = new URL(route.request().url()).searchParams; observed.push(Object.fromEntries(p)); await route.fulfill({ json: await make(p) }); });
   await page.route("**/api/decision-support?**", async route => { const s = await make(new URL(route.request().url()).searchParams); await route.fulfill({ json: await buildDecisionContext(s.league.league_id, { ...decisionFixtureOptions(), loadLeague: async () => s }) }); });
   await page.goto("/");
+  const icon = page.locator('link[rel="icon"]').first();
+  await expect(icon).toHaveAttribute("href", /icon\.svg/);
+  expect((await page.request.get(await icon.getAttribute("href"))).status()).toBe(200);
   await page.getByText("Accounts, leagues and season", { exact: true }).click();
   await page.getByLabel("Sleeper username", { exact: true }).fill("Alice"); await page.getByRole("button", { name: "Add account" }).click();
   await expect(page.locator(".rosterCard.mine")).toHaveCount(1);
