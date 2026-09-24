@@ -46,9 +46,14 @@ for (const width of [320,375,390,414]) test(`all views fit ${width}px and bottom
     else await nav(page,name).click();
     await expect(page.locator("main h1")).toHaveText(name);
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),name).toBe(true);
-    await page.evaluate(()=>window.scrollTo(0,document.documentElement.scrollHeight));
-    const bounds=await page.evaluate(()=>({bottom:document.querySelector("main").getBoundingClientRect().bottom,nav:document.querySelector(".mobileNav").getBoundingClientRect().top,padding:parseFloat(getComputedStyle(document.querySelector(".appWorkspace")).paddingBottom)}));
-    expect(bounds.bottom).toBeLessThanOrEqual(bounds.nav); expect(bounds.padding).toBeGreaterThanOrEqual(88);
+    // Next restores route scroll after commit. Check the settled end-of-page
+    // geometry, rather than racing that restoration with a one-shot scroll.
+    await expect.poll(async () => page.evaluate(async () => {
+      window.scrollTo(0,document.documentElement.scrollHeight);
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      return document.querySelector("main").getBoundingClientRect().bottom - document.querySelector(".mobileNav").getBoundingClientRect().top;
+    }), { message: `${name}: final content must clear bottom navigation` }).toBeLessThanOrEqual(0);
+    expect(await page.locator(".appWorkspace").evaluate(el=>parseFloat(getComputedStyle(el).paddingBottom))).toBeGreaterThanOrEqual(88);
     await expect(page.getByRole("navigation",{name:"Mobile navigation"})).toBeVisible();
   }
   const css=await page.evaluate(()=>[...document.styleSheets].flatMap(s=>{try{return [...s.cssRules].map(r=>r.cssText)}catch{return[]}}).join("\n"));
