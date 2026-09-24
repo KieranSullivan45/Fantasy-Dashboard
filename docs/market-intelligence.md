@@ -1,0 +1,17 @@
+# Market intelligence (v0.3.3)
+
+Reviewed official sources on 2026-09-23. Attention is informational. FootballValue, RosterValue, MarketAttention, optional future BuzzScore and future MarketValue remain separate. No new signal or PBP field changes the calibrated v0.3.2 weights or feature inputs.
+
+| Source | Permitted access / current status | Data and limitations |
+| --- | --- | --- |
+| [Sleeper API](https://docs.sleeper.com/) | Public read-only API; live | 24-hour trending adds, at most 100 players. Raw count, available-pool rank/percentile and archived count comparison. Absent entries are censored/unknown, never zero. Not ownership, usage, sentiment or trade value. |
+| [Reddit Data API terms](https://redditinc.com/policies/data-api-terms), [API wiki](https://support.reddithelp.com/hc/en-us/articles/16160319875092-Reddit-Data-API-Wiki), [Responsible Builder Policy](https://support.reddithelp.com/hc/en-us/articles/42728983564564-Responsible-Builder-Policy) | Live ingestion disabled pending approved use case and official OAuth access | The eligible free API rate limit does not grant access by itself. No HTML scraping or circumvention. Future ingestion must honor approval, deletion and retention requirements. Aggregate import contract only; no user profiles, raw posts, handles or inferred sentiment. |
+| [X official pricing](https://docs.x.com/x-api/getting-started/pricing) | Disabled: official reads use paid credits; outside scope | Future adapter status exists. No unofficial endpoints, scraping or redistribution. |
+
+`market-1` includes source/type, player, timestamp, season/week when applicable, raw count or mention count, comparison delta, rank/percentile, confidence, window length, raw/derived status and provenance. `importMarketAggregates` only accepts explicitly approved sources, permission references and nonfuture timestamps. It emits an allowlist of aggregate fields and always leaves unsupported sentiment null. Imported social aggregates are not wired to production scoring or signal generation without an approved adapter.
+
+Sleeper count change compares an observed current count with the newest archived **24-hour** count observed **18–30 hours earlier**, for the same player/season/source. Absolute delta = current − previous; relative delta = delta / previous (null if previous is zero). Rolling comparison index retains 14 days. Immutable recommendation captures retain the original count and comparison evidence. This is overlapping-window interest, not unique managers or ownership history.
+
+Rising/falling requires at least 100 adds of absolute change and 50% relative change. Confirmation additionally requires role expansion. Hype risk requires rising attention, fresh participation, absolute snap change <8 percentage points, mean snap share <50% and observed mean xFP <8. Quiet breakout requires role expansion and an **observed** available-pool attention percentile ≤30. Missing top-100 observations never qualify as quiet. These conservative classifications are uncalibrated evidence flags, not predictions, and do not boost player quality.
+
+Production does not yet ingest Reddit or X. Enabling Reddit requires a separate explicit access/terms decision; it is not needed for this release. After enough prospective observations, compare signal cohorts with matched sample/position baselines before promoting any attention field into a decision model.
