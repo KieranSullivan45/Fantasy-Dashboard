@@ -29,3 +29,7 @@ Cache: public s-maxage30/stale-while-revalidate30, no cookies or credentials, JS
 To retrieve an indexed capture, use the returned path under `https://raw.githubusercontent.com/KieranSullivan45/Fantasy-Dashboard/data-archive/data/`; gzip-decode the capture. This is explicit bulk evidence, not automatically embedded into small chat responses. The SHA256 field hashes canonical observation JSON; source hashes separately identify downloaded source bytes. No giant historical dataset is served by default.
 
 No bot protection is bypassed. Normal HTTP access is validated after deployment; any machine-specific access limitation should be reported separately from API correctness. Public account resolution is not authentication and grants no roster editing rights.
+
+## Provider selection (v0.3.4)
+
+Optional `provider=sleeper` preserves existing behavior. Responses add provider identity and capability metadata without removing chat-1 fields. `/api/chat/model-meta?provider=espn&season=2027` describes the disabled live ESPN adapter. Other ESPN league/decision/account requests return JSON 422, code UNSUPPORTED_FEATURE, with no-store caching. No private/imported data is exposed. Snapshot 0.2 and decision-support 0.3 remain compatible; their default Sleeper response bodies are unchanged. ESPN live assistant analysis is explicitly unavailable in this release.

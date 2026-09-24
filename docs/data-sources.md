@@ -29,3 +29,7 @@ The index retains the newest 1000 capture entries; immutable files remain reacha
 Schema migrations add a new version and reader; do not rewrite old captures. Future `outcome-1` joins select only games after observation time and with completed/available-at timestamps no later than evaluation time. Next-game/3-game/4-game/ROS outcome records remain separate from immutable predictors. No prospective performance is claimed before enough outcomes exist.
 
 Scheduled capture scope is installation-configured leagues, stable account ID, all rostered and returned/signal decision contexts. The full eligible pool is scored but omitted contexts are **not** claimed archived; omission counts are stored. Friend selections are browser-local and not enrolled automatically. This bounded scope avoids a public write/ingestion endpoint and unlimited archive growth.
+
+## ESPN vocabulary research (v0.3.4)
+
+See [ESPN access/security](providers/espn.md). Official support/terms and primary espn-api source informed offline normalization only. There is no new ESPN network ingestion, scraping, credential retention or predictive source. Browser-authorized imports remain transient in memory; synthetic test fixtures contain no live account data. Unsupported fields and unresolved mappings remain explicit. No ESPN data is archived prospectively by this release.
