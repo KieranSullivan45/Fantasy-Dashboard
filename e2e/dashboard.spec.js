@@ -19,18 +19,23 @@ test("full roster sections, empty slots, picks and FAAB render for both teams", 
     expect(new URL(route.request().url()).searchParams.get("compact")).toBe("0");
     await route.fulfill({ json: await snapshot(A) });
   });
-  await page.goto("/");
+  await page.goto("/dashboard/lineup");
   const mine = page.locator(".rosterCard.mine");
   await expect(mine.getByText("Empty slot")).toBeVisible();
   for (const [section, player] of [["Bench (1)", "Player 1"], ["IR (1)", "Player 3"], ["Taxi (1)", "Player 4"]]) {
     await mine.getByText(section, { exact: true }).click();
     await expect(mine.getByText(player, { exact: true })).toBeVisible();
   }
+  await page.locator('nav:visible a[href="/dashboard/league"]').click();
+  await page.getByRole("button", { name: "Teams", exact: true }).click();
+  await page.getByLabel("League team").selectOption("2");
   await expect(page.locator(".rosterCard:not(.mine)").getByText("Taxi (0)")).toBeVisible();
+  await page.getByRole("button", { name: "Activity", exact: true }).click();
   await expect(page.locator(".activity")).toContainText("2027 round 1 pick");
   await expect(page.locator(".activity")).toContainText("FAAB 15");
   await expect(page.locator(".activity")).toContainText("FAAB 0");
-  await expect(page.getByRole("link", { name: /Open ChatGPT snapshot/ })).toHaveAttribute("href", `/api/snapshot?league=${A}&compact=1&user=1395496956687581184`);
+  await page.locator('nav:visible a[href="/dashboard/more"]').click();
+  await expect(page.getByRole("link", { name: /Open ChatGPT snapshot/ })).toHaveAttribute("href", `/api/snapshot?league=${A}&user=1395496956687581184&compact=1`);
 });
 
 test("rapid league switching hides old data and ignores superseded responses", async ({ page }) => {
@@ -62,7 +67,8 @@ test("partial data warnings and pending transaction status are visible", async (
   data.warnings = [{ message: "Matchups unavailable" }];
   data.recent_transactions[0].status = "pending";
   await page.route("**/api/snapshot?**", route => route.fulfill({ json: data }));
-  await page.goto("/");
-  await expect(page.getByRole("status")).toContainText("Matchups unavailable");
+  await page.goto("/dashboard/league");
+  await page.getByRole("button", { name: "Activity", exact: true }).click();
+  await expect(page.locator('details[role="status"]')).toContainText("Matchups unavailable");
   await expect(page.locator(".activity")).toContainText("trade · pending");
 });
