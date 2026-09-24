@@ -1,0 +1,8 @@
+{
+  "provider": "sleeper",
+  "provider_user_id": "1395496956687581184",
+  "league_ids": ["1401373864818192384", "1395493939665989632"],
+  "archive_repository": "KieranSullivan45/Fantasy-Dashboard",
+  "archive_branch": "data-archive",
+  "description": "Optional installation preferences, not an application allowlist. Any user can choose their own accounts/leagues in the browser."
+}
