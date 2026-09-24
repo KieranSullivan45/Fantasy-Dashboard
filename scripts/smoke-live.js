@@ -44,10 +44,9 @@ for (const id of getConfiguredLeagueIds()) {
     assert.ok(Array.isArray(c.player.fantasy_positions));
     if (c.analytics?.recorded_games < 4) assert.equal(c.analytics.signals.length, 0);
   }
-  const expectedSize = id === "1401373864818192384" ? 10 : id === "1395493939665989632" ? 12 : null;
-  if (expectedSize) assert.equal(data.team_strength.length, expectedSize);
-  if (expectedSize === 10) { assert.ok(data.league.roster_positions.includes("SUPER_FLEX")); assert.equal(data.league.scoring_settings.bonus_rec_te, 0.5); }
-  if (expectedSize === 12) assert.equal(data.league.scoring_settings.rec, 1);
+  assert.equal(data.team_strength.length, snapshot.rosters.length);
+  assert.ok(data.team_strength_v2.every(t => t.superflex_qb_structural === data.league.roster_positions.includes("SUPER_FLEX")));
+  assert.ok(data.team_strength_v2.every(t => t.te_reception_premium === (data.league.scoring_settings.bonus_rec_te || 0)));
   console.log(JSON.stringify({ league_id: id, league: data.league.name, week: data.league.week, ms: Date.now() - started,
     matchup: data.matchup.status, evaluated: data.waivers.evaluated_count, scored: data.waivers.scored_count,
     statistics_through_week: data.coverage.statistics_through_week, source_status: data.sources.map(s => `${s.source_id}:${s.status}`),

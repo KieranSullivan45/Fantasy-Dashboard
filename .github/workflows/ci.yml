@@ -1,5 +1,8 @@
 name: Validate
-on: [push, pull_request]
+on:
+  push:
+    branches-ignore: [data-archive]
+  pull_request:
 jobs:
   test:
     runs-on: ubuntu-latest

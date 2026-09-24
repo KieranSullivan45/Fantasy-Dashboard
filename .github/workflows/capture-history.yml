@@ -1,0 +1,45 @@
+name: Capture prospective history
+on:
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+  workflow_run:
+    workflows: [Validate]
+    types: [completed]
+    branches: [main]
+permissions:
+  contents: write
+concurrency:
+  group: data-archive-writer
+  cancel-in-progress: false
+jobs:
+  capture:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Open durable archive checkout
+        run: |
+          git fetch origin data-archive
+          git worktree add .data/archive origin/data-archive
+      - name: Prepare season aggregate and capture public recommendations
+        run: |
+          export GITHUB_SHA=$(git rev-parse HEAD)
+          node scripts/refresh-high-value.js .data/archive/data/high-value
+          node scripts/capture-history.js .data/archive/data
+      - name: Publish append-only records atomically
+        working-directory: .data/archive
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add data
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'data: capture prospective recommendations and usage aggregates'
+          git push origin HEAD:data-archive

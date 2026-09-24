@@ -1,5 +1,9 @@
 # Fantasy Command Center
 
+## v0.3.3 signals and prospective history
+
+Adds a shared Signal Engine/feed, immutable recommendation captures on the existing GitHub data branch, precomputed red-zone evidence, any-account Sleeper discovery, season switching, spectator roster selection and compact read-only assistant routes. Calibrated v0.3.2 football models remain unchanged. See [architecture and thresholds](docs/v0.3.3.md), [source/storage policy](docs/data-sources.md), [market limitations](docs/market-intelligence.md) and [assistant API](docs/assistant-api.md).
+
 ## v0.3.1 football judgment
 
 Adds multi-position eligibility, lineup-aware replacement value, separate pickup categories, sourced usage history and league-scored expected opportunity. Player cards show concise role trends with deeper evidence on demand. Early-season safeguards keep two-game samples from becoming strong role claims. See [v0.3.1 sources, contracts, weights and limitations](docs/v0.3.1.md).
@@ -10,15 +14,11 @@ Adds actual weekly matchups, league-specific historical production, schedules, p
 
 See [v0.3 contracts, sources, scoring limitations and model details](docs/v0.3.md). In particular, historical PPG is labeled partial when special-teams rules cannot be supported; it is never silently replaced with generic PPR.
 
-A read-only Sleeper dashboard built for the two configured fantasy-football leagues. It gives a human dashboard plus a compact JSON endpoint that can be used as the current league source for ChatGPT analysis.
+A read-only Sleeper dashboard for any public NFL league/account. It gives a human dashboard plus compact JSON endpoints for assistant analysis.
 
-## Configured account
+## Account and season configuration
 
-- Sleeper username: `Ksullz`
-- League: `1401373864818192384`
-- League: `1395493939665989632`
-
-These are defaults in `lib/config.js`. They can be overridden with environment variables.
+Enter a username in Accounts, leagues and season. The app resolves and remembers the stable provider user ID, discovers leagues for the selected year and identifies the user's roster. Add multiple accounts or open a league ID directly in spectator mode. Selections stay in the browser; no login or write permissions are implied. Installation defaults and scheduled archive enrollment live in `config/installation.json` (or environment overrides). No business rule requires a particular ID, username, league count or year. Future seasons are discovered through data/configuration, without code edits.
 
 ## What v0.2 does
 
@@ -34,11 +34,9 @@ These are defaults in `lib/config.js`. They can be overridden with environment v
 - Includes Sleeper's 24-hour trending adds when those players are actually available in the league.
 - Exposes `/api/snapshot?league=<league_id>&compact=1` as a versioned compact endpoint, with explicit coverage, truncation and partial-data warnings.
 
-## Why there is no database yet
+## History storage
 
-Sleeper is already the source of truth. For the first version, adding a database would add complexity without improving the core workflow. Next.js caching keeps the large player-ID map from being requested more than once per day, consistent with Sleeper's API guidance.
-
-A database can be added later for historical snapshots, custom rankings, notes, trade history and analytics.
+Sleeper remains the league source of truth. Prospective observations use immutable gzip captures on the separate `data-archive` branch. GitHub Actions captures installation-configured leagues; public API reads never write. Friend browser selections are not automatically archived. No ephemeral Vercel filesystem or paid database is used. See the source/storage policy for retention, migration and growth limits.
 
 ## Run locally
 
