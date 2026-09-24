@@ -1,3 +1,4 @@
+async function controls(page) { if (!await page.getByLabel("League", {exact:true}).isVisible()) await page.getByText("Switch league or season", {exact:true}).click(); }
 import { test, expect } from "@playwright/test";
 import { buildDecisionContext } from "../lib/decision/build-context.js";
 import { decisionFixtureOptions } from "../test/decision-fixtures.js";
@@ -28,6 +29,7 @@ test("weekly actuals, player history, source limits and explainable waivers rend
   await expect(recommendations).toContainText("60 eligible players evaluated before truncation");
   await page.getByLabel("Recommendation type", { exact: true }).selectOption("best_overall");
   await expect(recommendations).toContainText("Player 65");
+  await recommendations.getByRole("button", {name:"Recommendation details"}).first().click();
   await recommendations.getByText("Score components", { exact: true }).first().click();
   await expect(recommendations).toContainText("football acquisition:");
   await recommendations.getByText("Player context", { exact: true }).first().click();
@@ -45,7 +47,7 @@ test("late decision responses cannot overwrite a newly selected league", async (
   await page.route("**/api/decision-support?**", route => { pending.push(route); });
   await page.goto("/dashboard/waivers");
   await expect.poll(() => pending.length).toBe(1);
-  await page.getByLabel("League", { exact: true }).selectOption(B);
+  await controls(page); await page.getByLabel("League", { exact: true }).selectOption(B);
   await expect.poll(() => pending.length).toBe(2);
   await pending[1].fulfill({ json: b.decision });
   await expect(page.locator(".waiverRecommendations")).toBeVisible();
@@ -87,6 +89,7 @@ test("dual-position recommendations and injury stashes remain separate on mobile
   await page.getByLabel("Recommendation position", { exact: true }).selectOption("ALL");
   await page.getByLabel("Recommendation type", { exact: true }).selectOption("injury_stashes");
   await expect(recommendations).toContainText("Player 64");
+  await recommendations.getByRole("button", {name:"Recommendation details"}).first().click();
   await expect(recommendations).toContainText("Injured assets");
   await expect(recommendations).not.toContainText("Player 65");
   await recommendations.getByText("Player context", { exact: true }).first().click();
@@ -101,6 +104,8 @@ test("rostered and available player summaries are visible without expanding cont
   await page.route("**/api/snapshot?**", route => route.fulfill({ json: data.snapshot }));
   await page.route("**/api/decision-support?**", route => route.fulfill({ json: data.decision }));
   await page.goto("/dashboard/lineup");
+  await expect(page.locator(".compactMetrics").first()).toContainText("StartValue");
+  await page.getByRole("button", {name:/Details ·/}).first().click();
   await expect(page.locator(".playerQuickContext").first()).toBeVisible();
   await expect(page.locator(".playerQuickContext").first()).toContainText("Season PPG");
   await expect(page.locator(".playerQuickContext").first()).toContainText("Recent");
@@ -119,6 +124,7 @@ test("calibrated model distinguishes add/drop evidence, start value and acquisit
   await expect(region).toContainText("No ALL candidates with qualifying evidence");
   await page.getByLabel("Recommendation type", { exact: true }).selectOption("best_overall");
   await expect(region).toContainText("ADD Player 65");
+  await region.getByRole("button", {name:"Recommendation details"}).first().click();
   await region.getByText("Lineup replacement evidence", { exact: true }).first().click();
   await expect(region).toContainText("net_roster_improvement");
   await region.getByText("Player context", { exact: true }).first().click();

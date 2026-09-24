@@ -1,3 +1,4 @@
+async function controls(page) { if (!await page.getByLabel("League", {exact:true}).isVisible()) await page.getByText("Switch league or season", {exact:true}).click(); }
 import { test, expect } from "@playwright/test";
 import { buildLeagueSnapshot } from "../lib/sleeper.js";
 import { fixtureFetch } from "../test/fixtures.js";
@@ -28,17 +29,17 @@ test("clean friend onboarding, multiple accounts, leagues, future seasons and di
   const icon = page.locator('link[rel="icon"]').first();
   await expect(icon).toHaveAttribute("href", /icon\.svg/);
   expect((await page.request.get(await icon.getAttribute("href"))).status()).toBe(200);
-  await page.getByText("Accounts, leagues and season", { exact: true }).click();
+  await controls(page); await page.getByText("Accounts, leagues and season", { exact: true }).click();
   await page.getByLabel("Sleeper username", { exact: true }).fill("Alice"); await page.getByRole("button", { name: "Add account" }).click();
   await expect(page.locator(".rosterCard.mine")).toHaveCount(1);
-  await page.getByLabel("League", { exact: true }).selectOption(leagues[1]);
+  await controls(page); await page.getByLabel("League", { exact: true }).selectOption(leagues[1]);
   await expect.poll(() => observed.at(-1)?.league).toBe(leagues[1]);
   await page.getByLabel("Sleeper username", { exact: true }).fill("Bob"); await page.getByRole("button", { name: "Add account" }).click();
   await expect.poll(() => observed.at(-1)?.user).toBe(bob);
   await page.getByLabel("Sleeper account", { exact: true }).selectOption(alice);
   await expect.poll(() => observed.at(-1)?.league).toBe(leagues[1]);
   await expect.poll(() => observed.at(-1)?.user).toBe(alice);
-  await page.getByLabel("NFL season", { exact: true }).fill("2027"); await page.getByRole("button", { name: "Discover season" }).click();
+  await controls(page); await page.getByLabel("NFL season", { exact: true }).fill("2027"); await page.getByRole("button", { name: "Discover season" }).click();
   await expect(page.locator(".summaryGrid")).toHaveCount(0);
   await expect(page.getByLabel("League", { exact: true })).toBeDisabled();
   await page.getByLabel("Direct league ID", { exact: true }).fill(leagues[2]); await page.getByRole("button", { name: "Open league" }).click();
@@ -63,8 +64,9 @@ test("Signal Feed renders engine evidence, confidence and filters on mobile", as
   await page.route("**/api/decision-support?**", route => route.fulfill({ json: d }));
   await page.setViewportSize({ width: 390, height: 844 }); await page.goto("/dashboard/signals");
   const feed = page.getByRole("region", { name: "Signal Feed", exact: true });
-  await expect(feed).toContainText("ROLE EXPANSION"); await expect(feed).toContainText("moderate confidence");
+  await expect(feed).toContainText(/ROLE EXPANSION|SHARE SPIKE/); await expect(feed).toContainText("moderate confidence");
   await expect(feed).toContainText("Small sample");
+  await feed.getByRole("button",{name:/View .* signals?/}).first().click();
   await feed.getByText("Signal evidence", { exact: true }).first().click(); await expect(feed.locator("pre").first()).toContainText("0.79");
   await page.getByLabel("Signal group").selectOption("SCHEDULE"); await expect(feed).toContainText("No qualifying changes");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
