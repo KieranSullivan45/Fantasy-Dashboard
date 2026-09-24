@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 const STORAGE = "fantasy-accounts-v1";
-export default function AccountManager({ onChange, selection, rosters = [] }) {
+export default function AccountManager({ onChange, selection, rosters = [], leagueName, management = false }) {
   const [accounts, setAccounts] = useState([]), [user, setUser] = useState(""), [season, setSeason] = useState(""), [username, setUsername] = useState(""), [leagueInput, setLeagueInput] = useState("");
   const [leagues, setLeagues] = useState([]), [error, setError] = useState(""), [busy, setBusy] = useState(false);
   const generation = useRef(0), current = useRef({ accounts: [], selection: null });
@@ -50,19 +50,19 @@ export default function AccountManager({ onChange, selection, rosters = [] }) {
     finally { if (request === generation.current) setBusy(false); }
   }
   return <section className="card accountManager" aria-label="Accounts and leagues">
-    <details><summary>Accounts, leagues and season</summary>
+    <details className="accountDetails" open={management}><summary>Accounts, leagues and season</summary>
       <p className="muted">Public read-only Sleeper access. Selections stay in this browser; entering a username does not authenticate as that person. Automatic history capture covers installation-configured leagues only.</p>
       <div className="accountFields">
         <form onSubmit={e => { e.preventDefault(); discover({ username, season }); }}><label>Sleeper username <input value={username} onChange={e => setUsername(e.target.value)} required maxLength={40} /></label><button disabled={busy}>Add account</button></form>
         <label>Account <select aria-label="Sleeper account" value={user} onChange={e => { setUser(e.target.value); if (e.target.value) discover({ user: e.target.value, season }); else publish([], { userId: null, season: Number(season), leagueId: "" }); }}><option value="">Spectator / direct league</option>{accounts.map(a => <option key={a.provider_user_id} value={a.provider_user_id}>{a.username || a.provider_user_id}</option>)}</select></label>
-        <form onSubmit={e => { e.preventDefault(); if (user) discover({ user, season }); else setError("Choose an account to discover that season's leagues, or add its league ID directly."); }}><label>NFL season <input aria-label="NFL season" type="number" min="2010" value={season} onChange={e => setSeason(e.target.value)} required /></label><button disabled={busy}>Discover season</button></form>
         <form onSubmit={e => { e.preventDefault(); discover({ league: leagueInput }); }}><label>Direct league ID <input value={leagueInput} onChange={e => setLeagueInput(e.target.value)} required pattern="[0-9]{6,25}" /></label><button disabled={busy}>Open league</button></form>
       </div>
     </details>
-    <div className="accountFields">
-      <label>League <select aria-label="League" disabled={busy || !leagues.length} value={selection.leagueId || ""} onChange={e => publish(leagues, { userId: user || null, season: leagues.find(l => l.league_id === e.target.value)?.season || selection.season, leagueId: e.target.value, rosterId: null })}>{!leagues.length ? <option value="">Select a league</option> : leagues.map(l => <option key={l.league_id} value={l.league_id}>{l.name}</option>)}</select></label>
+    <div className="accountFields accountToolbar">
+      <label className="leagueControl">League <select aria-label="League" disabled={busy || !leagues.length} value={selection.leagueId || ""} onChange={e => publish(leagues, { userId: user || null, season: leagues.find(l => l.league_id === e.target.value)?.season || selection.season, leagueId: e.target.value, rosterId: null })}>{!leagues.length ? <option value="">Select a league</option> : leagues.map(l => <option key={l.league_id} value={l.league_id}>{l.league_id === selection.leagueId && leagueName ? leagueName : l.name}</option>)}</select></label>
+      <form className="seasonControl" onSubmit={e => { e.preventDefault(); if (user) discover({ user, season }); else setError("Choose an account to discover that season's leagues, or add its league ID directly."); }}><label>Season <input aria-label="NFL season" type="number" min="2010" value={season} onChange={e => setSeason(e.target.value)} required /></label><button aria-label="Discover season" disabled={busy}>Go</button></form>
       {!selection.userId && rosters.length ? <label>Analyze roster <select aria-label="Analyze roster" value={selection.rosterId || ""} onChange={e => publish(leagues, { ...selection, rosterId: e.target.value ? Number(e.target.value) : null })}><option value="">Spectator — no “my roster”</option>{rosters.map(r => <option key={r.roster_id} value={r.roster_id}>{r.team_name}</option>)}</select></label> : null}
-      <span className="muted">{busy ? "Discovering…" : `${leagues.length} leagues · ${selection.season || "season unresolved"}`}</span>
+      <span className="muted accountContext">{busy ? "Discovering…" : `${accounts.find(a => a.provider_user_id === selection.userId)?.username || (selection.userId ? "Connected account" : "Spectator")} · ${leagues.length} leagues`}</span>
     </div>
     {error ? <p className="status error" role="alert">{error}</p> : null}
   </section>;

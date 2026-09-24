@@ -109,3 +109,82 @@ summary { cursor: pointer; color: var(--muted); font-size: .8rem; }
 .accountFields input { width: 12rem; }
 .signalGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 1rem; }
 .signalGrid article { min-width: 0; overflow-wrap: anywhere; }
+
+/* v0.3.3.1: shared routes, native scrolling, and safe-area mobile navigation. */
+:root { --mobile-nav-height: 64px; }
+input { font: inherit; color: var(--text); background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
+button, select, input, summary { min-height: 44px; }
+summary { display: list-item; padding: 12px 0; font-size: .875rem; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.srOnly { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.skipLink { position: fixed; top: 8px; left: 8px; z-index: 100; transform: translateY(-200%); padding: 12px; background: var(--panel); }
+.skipLink:focus { transform: none; }
+.appShell { width: min(1440px, 100%); margin: auto; display: grid; grid-template-columns: 190px minmax(0,1fr); gap: 24px; padding: 0 24px; }
+.appSidebar { position: sticky; top: 0; align-self: start; padding-top: 26px; }
+.brand { display: block; font-weight: 800; line-height: 1.3; margin-bottom: 24px; }
+.desktopNav { display: grid; gap: 6px; }
+.desktopNav a, .mobileNav a { color: var(--muted); }
+.desktopNav a { display: block; padding: 12px; border-radius: 8px; border-left: 3px solid transparent; }
+.desktopNav a.active { color: var(--accent); border-left-color: var(--accent); background: var(--panel); font-weight: 750; }
+.appWorkspace, .routeContent, .routeContent section, .routeContent article { min-width: 0; }
+.shellHeader { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; }
+.mobileBrand, .mobileNav { display: none; }
+.routeContent { width: 100%; margin: 0; padding: 20px 0 40px; outline: none; }
+.routeContent h1 { font-size: 1.9rem; line-height: 1.15; letter-spacing: -.035em; margin: 0 0 16px; }
+.routeContent h2 { font-size: 1.2rem; margin-bottom: 12px; }
+.routeContent .section { margin-top: 20px; }
+.viewIntro { color: var(--muted); margin-top: -6px; }
+.accountManager { padding: 10px 12px; display: flex; flex-direction: column; margin: 0; }
+.accountDetails { order: 2; margin-top: 0; }
+.accountToolbar { order: 1; margin: 0; display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px 12px; }
+.accountToolbar .leagueControl { display: grid; gap: 4px; font-size: .8rem; }
+.leagueControl select { width: 100%; }
+.accountToolbar .seasonControl { display: flex; flex-wrap: nowrap; gap: 6px; align-items: flex-end; }
+.accountToolbar .seasonControl label { display: grid; gap: 4px; font-size: .8rem; }
+.accountToolbar .seasonControl input { width: 5.7rem; }
+.accountContext { grid-column: 1/-1; overflow-wrap: anywhere; }
+.accountDetails .accountFields { align-items: flex-start; }
+.accountDetails .accountFields > * { flex: 1 1 230px; max-width: 100%; }
+.accountDetails input, .accountDetails select { width: 100%; }
+.accountDetails form label { flex: 1 1 150px; }
+.homeCard { margin-top: 16px; }
+.homeMatchup { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+.homeMatchup > div, .homeSignal { display: grid; gap: 5px; min-width: 0; }
+.homeSignal { padding: 12px 0; border-bottom: 1px solid var(--line); }
+.homeSignal strong { font-size: .85rem; }
+.quickLinks, .moreLinks, .pager { display: flex; flex-wrap: wrap; gap: 12px; margin: 20px 0; }
+.quickLinks a, .quickLink, .moreLinks a { display: inline-block; padding: 12px; }
+.moreLinks > .card { flex: 1 1 200px; }
+.moreLinks strong, .moreLinks span { display: block; }
+.moreLinks span { color: var(--muted); margin-top: 8px; }
+.playerFilters { display: flex; flex-wrap: wrap; gap: 12px; }
+.playerFilters label { display: grid; gap: 6px; flex: 1 1 160px; min-width: 0; }
+.playerFilters input, .playerFilters select { width: 100%; }
+.playerResults, .comparisonList { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,270px),1fr)); gap: 12px; margin-top: 16px; }
+.playerDetail { margin-top: 16px; }
+.routeContent .tabs button { min-height: 44px; }
+.routeContent .card, .routeContent p, .routeContent a { overflow-wrap: anywhere; }
+.routeContent select { max-width: 100%; }
+.routeContent .summaryGrid { grid-template-columns: 2fr 1fr; margin: 0 0 16px; }
+.routeContent .standing { flex-wrap: wrap; }
+@media (max-width: 767px) {
+  .appShell { display: block; padding: 0 12px; }
+  .appSidebar { display: none; }
+  .appWorkspace { padding-bottom: calc(var(--mobile-nav-height) + env(safe-area-inset-bottom, 0px) + 24px); }
+  .shellHeader { padding: 8px 0; }
+  .shellHeader > .muted { display: none; }
+  .mobileBrand { display: block; font-size: 1rem; font-weight: 750; }
+  .mobileNav { position: fixed; z-index: 40; bottom: 0; left: 0; right: 0; display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); height: calc(var(--mobile-nav-height) + env(safe-area-inset-bottom, 0px)); padding: 6px 4px calc(6px + env(safe-area-inset-bottom, 0px)); background: var(--panel); border-top: 1px solid var(--line); }
+  .mobileNav a { display: flex; align-items: center; justify-content: center; font-size: .82rem; min-height: 44px; border-top: 3px solid transparent; }
+  .mobileNav a.active { color: var(--accent); border-top-color: var(--accent); font-weight: 800; background: var(--panel-2); border-radius: 7px; }
+  .routeContent { padding-top: 18px; padding-bottom: 0; }
+  .routeContent h1 { font-size: 1.7rem; }
+  .accountManager { padding: 8px 10px; }
+  .accountToolbar { gap: 6px 8px; }
+  .accountToolbar select, .accountToolbar input { font-size: 1rem; }
+  .accountToolbar .seasonControl input { width: 5.2rem; padding: 8px 4px; }
+  .accountToolbar .seasonControl button { padding: 8px; min-width: 44px; }
+  .accountContext { font-size: .78rem; }
+  .homeCard { padding: 14px; }
+  .routeContent .contextMetrics { gap: 8px; }
+}
