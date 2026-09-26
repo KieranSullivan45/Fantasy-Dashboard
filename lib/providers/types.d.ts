@@ -35,3 +35,11 @@ export interface EspnFacts {
  roster_history:Array<{ week:number; team_id:number; entries:unknown[] }>;
  warnings:Array<{code:string; resource:string; message:string}>;
 }
+// User-authorized ESPN scoring configuration (espn-scoring-1, lib/providers/espn-scoring.js). Server-side runtime input only.
+export interface ScoringBand { min:number; max:number|null; points:number; }
+export interface EspnScoringConfig {
+ schema_version:'espn-scoring-1'; provider:'espn'; league_id:string; season:number; scoring_source:'user_authorized'; unlisted_rules_score_zero:true;
+ source?:Record<string,string>|null;
+ offense:Record<string,number>; kicking:Record<string,number|ScoringBand[]>; team_defense:Record<string,number|ScoringBand[]>;
+}
+// Authorized facts scoring: { available, source:'user_authorized', rules, unsupported, status:'complete'|'partial', binding }.

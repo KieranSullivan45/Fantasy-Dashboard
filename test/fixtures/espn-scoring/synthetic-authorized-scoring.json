@@ -1,0 +1,40 @@
+{
+  "schema_version": "espn-scoring-1",
+  "provider": "espn",
+  "league_id": "424242",
+  "season": 2030,
+  "scoring_source": "user_authorized",
+  "unlisted_rules_score_zero": true,
+  "source": { "description": "SYNTHETIC test configuration bound to the synthetic league 424242. Rule values mirror a custom ESPN League Info scoring screen, including unusual points-allowed values that must be preserved exactly." },
+  "offense": {
+    "passing_yards": 0.04, "passing_td": 4, "interception_thrown": -2, "passing_2pt": 2,
+    "rushing_yards": 0.1, "rushing_td": 6, "rushing_2pt": 2,
+    "receiving_yards": 0.1, "reception": 0.5, "receiving_td": 6, "receiving_2pt": 2,
+    "kickoff_return_td": 6, "punt_return_td": 6, "fumble_recovered_td": 6, "fumble_lost": -2,
+    "interception_return_td": 6, "fumble_return_td": 6, "blocked_kick_return_td": 6,
+    "two_point_return": 2, "one_point_safety": 1
+  },
+  "kicking": {
+    "pat_made": 1,
+    "field_goals_made": [
+      { "min": 0, "max": 39, "points": 3 },
+      { "min": 40, "max": 49, "points": 4 },
+      { "min": 50, "max": 59, "points": 5 },
+      { "min": 60, "max": null, "points": 6 }
+    ]
+  },
+  "team_defense": {
+    "sack": 1, "interception_return_td": 6, "fumble_return_td": 6, "kickoff_return_td": 6, "punt_return_td": 6,
+    "blocked_kick_return_td": 6, "blocked_kick": 2, "interception": 2, "fumble_recovered": 2, "fumble_forced": 1, "safety": 2,
+    "two_point_return": 2, "one_point_safety": 1,
+    "points_allowed": [
+      { "min": 0, "max": 0, "points": 10 },
+      { "min": 1, "max": 6, "points": 7 },
+      { "min": 7, "max": 13, "points": 4 },
+      { "min": 14, "max": 17, "points": 1 },
+      { "min": 28, "max": 34, "points": -1 },
+      { "min": 35, "max": 45, "points": 4 },
+      { "min": 46, "max": null, "points": 4 }
+    ]
+  }
+}

@@ -16,7 +16,7 @@ New ESPN player keys are nfl:GSIS when an exact unambiguous crosswalk exists, ot
 |---|---|---|---|---|
 | Username/discovery | Yes | Disabled | No | Session team for the exact league/season |
 | League/settings/rosters | Yes | Disabled | Parsed when present | Rosters and slot counts; no owners, playoff size, waiver type or FAAB budget |
-| Scoring | Existing rules/warnings | Disabled | Verified basic coefficients; unknown rules flagged | Unavailable: scoring-dependent analysis refused |
+| Scoring | Existing rules/warnings | Disabled | Verified basic coefficients; unknown rules flagged | Unavailable from the transport; a user-authorized league/season-bound configuration (ADR 0003) enables league scoring; otherwise refused |
 | Bench/IR/dual eligibility | Yes | Disabled | Yes | Yes (IR from lineup slot only) |
 | OP/Superflex | Yes | Disabled | Slot translation | Slot counts; OP never an eligibility |
 | Taxi | Yes | Disabled | Unsupported | Unsupported |
@@ -24,7 +24,7 @@ New ESPN player keys are nfl:GSIS when an exact unambiguous crosswalk exists, ot
 | Standings/FAAB/priority | Yes | Disabled | Nullable source fields | Records only; FAAB/priority unavailable |
 | Transactions | Yes | Disabled | Unsupported | Bounded, possibly truncated window; private pending items withheld |
 | Draft picks | Transaction history | Disabled | Unsupported | Completed selections; no ownership ledger |
-| Complete waiver pool | Yes | Disabled | Unsupported | No (capped subset; free agent/waiver state and clear time) |
+| Complete waiver pool | Yes | Disabled | Unsupported | No (capped subset; free agent/waiver state and clear time). Replacement levels, VOR, add/drop, Pickup Rating and trades stay disabled even with scoring |
 | Add interest | Yes | Disabled | Unsupported | No |
 | Private auth | Not collected | Disabled | Not accepted | Not implemented (no transport/OAuth) |
 
