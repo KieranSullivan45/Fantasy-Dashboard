@@ -231,14 +231,22 @@ test("roster identities and protection lineup structure are required trade-local
     "missing protection roster_positions": s => { delete s.protection.roster_positions; },
     "mismatched protection roster_positions": s => { s.protection.roster_positions = ["QB", "FLEX", "BN"]; },
   };
+  const malformed = { string: "1,2", object: { a: 1, b: 2 }, number: 12, boolean: true, "non-id elements": [1, {}], "empty string id": ["", "2"] };
+  for (const [kind, value] of Object.entries(malformed)) for (const where of ["snapshot", "value_source", "protection"]) {
+    cases[`malformed ${where} roster_ids (${kind})`] = s => { s[where].roster_ids = value; };
+  }
   for (const [name, mutate] of Object.entries(cases)) {
     const s = sources(); mutate(s);
-    const result = compareContextMetadata(s);
+    let result;
+    assert.doesNotThrow(() => { result = compareContextMetadata(s); }, name);
     assert.equal(result.ok, false, name); assert.equal(result.status, "invalid", name);
     assert.ok(result.errors.length && result.errors.every(e => e.code === "CONTEXT_MISMATCH"), name);
     const field = name.includes("roster_positions") ? "roster_positions" : "roster_ids";
     assert.ok(result.errors.some(e => e.field === field), `${name} names ${field}`);
   }
+  const stringIds = sources(); stringIds.snapshot.roster_ids = "1,2";
+  assert.deepEqual(compareContextMetadata(stringIds), { ok: false, status: "invalid",
+    errors: [tradeError("CONTEXT_MISMATCH", { field: "roster_ids", message: "roster_ids in snapshot must list at least two distinct roster ids." })] });
 });
 
 test("capabilities are explicit; anything but available is unsupported", () => {
