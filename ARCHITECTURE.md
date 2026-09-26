@@ -1,4 +1,4 @@
-# Architecture (current as of v0.3.4)
+# Architecture (current as of v0.4 Trade Analyzer delivery, V04-04)
 
 This describes what exists in the code today. Rules live in `AGENTS.md`; planned work only under **Future direction**. Detailed specifications: `docs/v0.3.md` … `docs/v0.3.4.md`, `docs/providers.md`, `docs/assistant-api.md`, `docs/data-sources.md`, `docs/market-intelligence.md`.
 
@@ -8,9 +8,9 @@ Stack: Next.js 15 (App Router), React 19, plain JavaScript ES modules, Node `nod
 
 ```
 Presentation   app/dashboard/*, app/components/*          (client UI, browser-local account selection)
-API            app/api/{snapshot,decision-support,accounts,chat/[resource]}/route.js  (GET-only)
-Service        lib/snapshot-api.js, lib/decision-api.js, lib/chat-api.js, lib/decision-service.js (30 s bounded cache),
-               lib/snapshot-loader.js, lib/decision-loader.js (client loaders), lib/compact.js
+API            app/api/{snapshot,decision-support,accounts,chat/[resource]}/route.js (GET), app/api/trade/route.js (POST)
+Service        lib/snapshot-api.js, lib/decision-api.js, lib/chat-api.js, lib/trade-api.js, lib/decision-service.js (30 s bounded cache),
+               lib/snapshot-loader.js, lib/decision-loader.js, lib/trade-loader.js (client loaders), lib/compact.js
 Platform       lib/providers/{index,contracts,sleeper,espn,espn-normalize,auth,domain}.js, types.d.ts;
                Sleeper-specific: lib/sleeper.js, lib/derive.js, lib/accounts/{sleeper,query}.js, lib/sources/sleeper/*
 Stat sources   lib/sources/* (nflverse stats/schedules/usage/plays, ffopportunity; optional rankings/projections/ownership adapters)
@@ -64,6 +64,7 @@ Backtest       lib/backtest/*, scripts/backtest.js → artifacts/backtests/v032-
 
 - `/api/chat/{leagues,league-summary,waivers,signals,player,matchup,model-meta,history}`, schema `chat-1`, GET-only, compact projections of the same decision/signal outputs (no separate scoring). Public cache `s-maxage=30, stale-while-revalidate=30`; errors `no-store`; strict query validation (400/404/409/422/502).
 - `/api/snapshot` (0.2) is compact by default; `compact=0` returns the full snapshot (the dashboard uses full). `/api/decision-support` (0.3). Optional `provider=`; default Sleeper bodies unchanged.
+- `POST /api/trade` (`trade-1`, V04-04): lazy evaluation endpoint, called only when the user analyzes a trade. The client sends league identity, its snapshot basis and player IDs only; values, ownership, capabilities and drop-protection evidence (`dropProtections` on the full internal decision contexts) are server-authoritative. It uses the shared identity-keyed decision-state cache (`decisionStateService`) and returns only the TradeEvaluation, `no-store`. No persistence and no provider writes. ESPN live remains unsupported (`UNSUPPORTED_FEATURE`).
 - Caching: `decision-service.js` keys its 30 s in-memory cache on provider, league, user identity, roster and season. Shared public-source caches use broader keys: one daily Sleeper player catalog (`lib/sources/sleeper/player-cache.js`) and request-keyed in-memory downloads (`lib/sources/http.js`).
 - Client guards: `snapshot-loader.js` and `decision-loader.js` use a generation counter plus `AbortController` to drop stale responses. The dashboard shows decision data only when `decisionBasis(snapshot)` matches the decision response's `basis`, and the loader reports a mismatch as an error.
 
