@@ -12,21 +12,21 @@ New ESPN player keys are nfl:GSIS when an exact unambiguous crosswalk exists, ot
 
 ## Capability matrix
 
-| Feature | Sleeper live | ESPN live | ESPN authorized import |
-|---|---|---|---|
-| Username/discovery | Yes | Disabled | No |
-| League/settings/rosters | Yes | Disabled | Parsed when present |
-| Scoring | Existing rules/warnings | Disabled | Verified basic coefficients; unknown rules flagged |
-| Bench/IR/dual eligibility | Yes | Disabled | Yes |
-| OP/Superflex | Yes | Disabled | Slot translation |
-| Taxi | Yes | Disabled | Unsupported |
-| Matchups | Yes | Disabled | Only explicitly mapped single-week periods |
-| Standings/FAAB/priority | Yes | Disabled | Nullable source fields |
-| Transactions | Yes | Disabled | Unsupported |
-| Draft picks | Transaction history | Disabled | Unsupported |
-| Complete waiver pool | Yes | Disabled | Unsupported |
-| Add interest | Yes | Disabled | Unsupported |
-| Private auth | Not collected | Disabled | Not accepted |
+| Feature | Sleeper live | ESPN live | ESPN authorized import | ESPN facts via Flaim (offline mapping only) |
+|---|---|---|---|---|
+| Username/discovery | Yes | Disabled | No | Session team for the exact league/season |
+| League/settings/rosters | Yes | Disabled | Parsed when present | Rosters and slot counts; no owners, playoff size, waiver type or FAAB budget |
+| Scoring | Existing rules/warnings | Disabled | Verified basic coefficients; unknown rules flagged | Unavailable: scoring-dependent analysis refused |
+| Bench/IR/dual eligibility | Yes | Disabled | Yes | Yes (IR from lineup slot only) |
+| OP/Superflex | Yes | Disabled | Slot translation | Slot counts; OP never an eligibility |
+| Taxi | Yes | Disabled | Unsupported | Unsupported |
+| Matchups | Yes | Disabled | Only explicitly mapped single-week periods | Single-week periods; undecided totals withheld |
+| Standings/FAAB/priority | Yes | Disabled | Nullable source fields | Records only; FAAB/priority unavailable |
+| Transactions | Yes | Disabled | Unsupported | Bounded, possibly truncated window; private pending items withheld |
+| Draft picks | Transaction history | Disabled | Unsupported | Completed selections; no ownership ledger |
+| Complete waiver pool | Yes | Disabled | Unsupported | No (capped subset; free agent/waiver state and clear time) |
+| Add interest | Yes | Disabled | Unsupported | No |
+| Private auth | Not collected | Disabled | Not accepted | Not implemented (no transport/OAuth) |
 
 Capability availability describes adapter support, not a guarantee that every field exists in every league. Missing fields remain null. ESPN public API requests fail closed; model-meta still describes capabilities.
 
@@ -45,4 +45,4 @@ Observation records use their existing provider field. Sleeper archive paths sta
 5. Prove fixture parity, legal lineup/scoring behavior, namespace isolation, safe errors and live access before enabling routes/onboarding.
 6. Implement approved authentication separately; never put private league data into shared public caches or machine routes.
 
-Future live ESPN activation still needs a complete transport/onboarding/security implementation; changing a capability flag alone is insufficient.
+Facts from any ESPN source map into the internal `espn-facts-1` contract and one snapshot builder (ADR 0002); Flaim is transport/provenance, never a provider id. Future live ESPN activation still needs a complete transport/onboarding/security implementation; changing a capability flag alone is insufficient.

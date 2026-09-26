@@ -23,6 +23,22 @@ Slots translate QB/RB/WR/TE, flex variants, OP→SUPER_FLEX, K/DEF, IDP, bench a
 
 Single-week matchups require an explicit scheduleSettings.matchupPeriods mapping. Multiweek/unmapped totals are not claimed as weekly points. Standings, priority and FAAB are nullable source fields. No complete player pool, transactions, pick holdings, add interest, taxi, ownership feed or live historical access is implemented. Offline previews do not produce acquisition advice from an incomplete pool.
 
+## ESPN facts via Flaim (offline mapping; ADR 0002)
+
+Flaim (an MCP service holding the user's ESPN session on its side) was verified read-only on 2026-09-26. `lib/providers/flaim/espn-map.js` maps its tool payloads into the internal `espn-facts-1` contract. Authorized imports map into the same contract, and one builder produces snapshot 0.2 with `provider: "espn"` and `coverage.source_transport: "flaim"`.
+
+- Player slots are translated labels. Only the nine observed labels map (QB, RB, WR, TE, FLEX, K, D/ST, Bench, IR); anything else is an unsupported slot that blocks lineup and decision evaluation.
+- IR comes from the slot, never from injury status.
+- Eligibility keeps QB/RB/WR/TE/K/DEF. Flex groupings and "Rookie" are ignored, and unverified IDP labels are ignored with a warning.
+- The transport exposes no scoring coefficients, owners, waiver priority or FAAB. Scoring-dependent analysis (decision support, Pickup Rating, trades) is refused with `UNSUPPORTED_FEATURE`.
+- Available players are a capped subset (never a complete pool) with free-agent/waiver state and waiver clear time. ESPN-wide rostered and started rates are discarded.
+- Undecided matchup totals are withheld.
+- Transactions are a bounded, possibly truncated window. The manager's pending claims and proposals are private and withheld from the snapshot. FAAB bids stay unknown.
+- Historical weekly rosters keep membership and slots only; their stats and rates are current-time values.
+- Negative D/ST ids and unmapped ids stay unresolved.
+
+There is no live transport, OAuth or persistence, and tests use synthetic fixtures only. Production OAuth is not approved: Flaim's documented redirect allowlist does not accept arbitrary web-app callbacks, and permission for a custom web app is unconfirmed.
+
 ## Private access and activation
 
 No account password, cookie form, secret environment variable, hosted credential store or live authentication transport is enabled. The disabled credential interface and normalized AUTH_REQUIRED/AUTH_EXPIRED/PRIVATE_LEAGUE/RATE_LIMITED errors establish a boundary only. No cookie values are returned/logged or included in URLs/bundles.

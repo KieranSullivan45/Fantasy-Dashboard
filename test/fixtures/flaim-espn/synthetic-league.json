@@ -1,0 +1,83 @@
+{
+  "_fixture": "SYNTHETIC. Field names and value shapes mirror Flaim ESPN football tool results verified live on 2026-09-26; every league, team, player id, name and number is invented. Contains no real league data.",
+  "session": { "success": true, "data": {
+    "currentDate": "2030-09-26T12:00:00.000Z",
+    "currentSeasons": { "football": { "year": 2030, "label": "2030" } },
+    "allLeagues": [
+      { "leagueId": "424242", "sport": "football", "teamId": "1", "teamName": "Synthetic Team One", "leagueName": "Synthetic League", "seasonYear": 2030, "platform": "espn" },
+      { "leagueId": "515151", "sport": "hockey", "teamId": "4", "teamName": "Other Sport Team", "leagueName": "Synthetic Hockey", "seasonYear": 2030, "platform": "espn" }
+    ]
+  } },
+  "leagueInfo": { "success": true, "data": {
+    "id": 424242, "name": "Synthetic League", "size": 2, "seasonId": 2030, "scoringPeriodId": 3, "currentMatchupPeriod": 3, "segmentId": 0,
+    "status": { "currentMatchupPeriod": 3, "finalScoringPeriod": 16, "firstScoringPeriod": 1, "isActive": true, "isViewable": false, "latestScoringPeriod": 3, "teamsJoined": 2 },
+    "teams": [ { "teamId": 1, "teamName": "Synthetic Team One ", "abbrev": "ONE" }, { "teamId": 2, "teamName": "Synthetic Team Two", "abbrev": "TWO" } ],
+    "scoringSettings": { "type": "H2H_POINTS", "matchupPeriods": { "1": [1], "2": [2], "3": [3], "4": [4] }, "matchupTieRule": "NONE", "homeTeamBonus": 0 },
+    "roster": { "lineupSlotCounts": { "0": 1, "1": 0, "2": 2, "3": 0, "4": 2, "5": 0, "6": 1, "7": 0, "16": 1, "17": 1, "18": 0, "20": 6, "21": 2, "23": 1, "24": 0 },
+                "positionLimits": { "0": 0, "1": 4, "2": 8 } },
+    "schedule": { "playoffSeedingRule": "TOTAL_POINTS_SCORED", "playoffMatchupPeriodLength": 1 },
+    "keeperSettings": { "keeperCount": 0, "keeperCountFuture": 0, "keeperOrderType": "TRADITIONAL" },
+    "isKeeperLeague": false,
+    "draftSettings": { "type": "SNAKE", "auctionBudget": 200, "pickTradingEnabled": false },
+    "tradeSettings": { "deadlineDate": "2030-12-02T17:00:00.000Z", "revisionHours": 24, "vetoVotesRequired": 3, "max": -1 }
+  } },
+  "rosters": [
+    { "success": true, "data": { "leagueId": "424242", "teamId": 1, "teamName": "Synthetic Team One ", "snapshot": { "type": "current" }, "keeperValueUnit": "draft_round", "isKeeperLeague": false, "roster": [
+      { "playerId": 910001, "name": "Synthetic QB One", "position": "QB", "eligiblePositions": ["QB", "OP"], "lineupSlot": "QB", "proTeam": "KC", "injuryStatus": "Active", "percentOwned": 97.5, "percentStarted": 90.1, "stats": { "passYds": 500, "passTD": 4, "STAT_5": 50 }, "acquisitionType": "DRAFT", "acquisitionDate": 1916000000000, "keeperValue": 0, "keeperValueFuture": 4 },
+      { "playerId": 910002, "name": "Synthetic RB One", "position": "RB", "eligiblePositions": ["RB", "RB/WR", "FLEX", "OP"], "lineupSlot": "RB", "proTeam": "WSH", "injuryStatus": "Active", "percentOwned": 95, "percentStarted": 88, "stats": { "rushYds": 210 }, "acquisitionType": "DRAFT", "acquisitionDate": 1916000000000, "keeperValue": 0, "keeperValueFuture": 2 },
+      { "playerId": 910003, "name": "Synthetic Rookie WR", "position": "WR", "eligiblePositions": ["Rookie", "RB/WR", "WR", "WR/TE", "FLEX", "OP"], "lineupSlot": "Bench", "proTeam": "NO", "injuryStatus": "IR", "percentOwned": 30, "percentStarted": 1, "stats": {}, "acquisitionType": "ADD", "acquisitionDate": 1916500000000, "keeperValue": 0, "keeperValueFuture": 0 },
+      { "playerId": 910004, "name": "Synthetic TE On IR", "position": "TE", "eligiblePositions": ["WR/TE", "TE", "FLEX", "OP"], "lineupSlot": "IR", "proTeam": "LV", "injuryStatus": "Questionable", "percentOwned": 99, "percentStarted": 50, "stats": {}, "acquisitionType": "DRAFT", "acquisitionDate": 1916000000000, "keeperValue": 0, "keeperValueFuture": 3 },
+      { "playerId": 910005, "name": "Synthetic Dual RB WR", "position": "WR", "eligiblePositions": ["RB", "WR", "RB/WR", "FLEX", "OP"], "lineupSlot": "FLEX", "proTeam": "DET", "injuryStatus": "Active", "percentOwned": 80, "percentStarted": 60, "stats": { "rec": 9 }, "acquisitionType": "TRADE", "acquisitionDate": 1917000000000, "keeperValue": 0, "keeperValueFuture": 6 },
+      { "playerId": 910006, "name": "Synthetic Kicker One", "position": "K", "eligiblePositions": ["K"], "lineupSlot": "K", "proTeam": "HOU", "injuryStatus": "Active", "percentOwned": 90, "percentStarted": 85, "stats": { "FGM": 4 }, "acquisitionType": "ADD", "acquisitionDate": 1916600000000, "keeperValue": 0, "keeperValueFuture": 0 },
+      { "playerId": -16012, "name": "Synthetic D/ST One", "position": "D/ST", "eligiblePositions": ["D/ST"], "lineupSlot": "D/ST", "proTeam": "KC", "percentOwned": 65, "percentStarted": 59, "stats": { "defINT": 1 }, "acquisitionType": "DRAFT", "acquisitionDate": 1916000000000, "keeperValue": 0, "keeperValueFuture": 15 },
+      { "playerId": 910007, "name": "Synthetic Unmapped RB", "position": "RB", "eligiblePositions": ["Rookie", "RB", "RB/WR", "FLEX", "OP"], "lineupSlot": "Bench", "proTeam": "SEA", "injuryStatus": "Active", "percentOwned": 20, "percentStarted": 1, "stats": {}, "acquisitionType": "ADD", "acquisitionDate": 1917100000000, "keeperValue": 0, "keeperValueFuture": 0 }
+    ] } },
+    { "success": true, "data": { "leagueId": "424242", "teamId": 2, "teamName": "Synthetic Team Two", "snapshot": { "type": "current" }, "keeperValueUnit": "draft_round", "isKeeperLeague": false, "roster": [
+      { "playerId": 920001, "name": "Synthetic QB Two", "position": "QB", "eligiblePositions": ["QB", "OP"], "lineupSlot": "QB", "proTeam": "BUF", "injuryStatus": "Active", "percentOwned": 99, "percentStarted": 99, "stats": {}, "acquisitionType": "DRAFT", "acquisitionDate": 1916000000000, "keeperValue": 0, "keeperValueFuture": 1 },
+      { "playerId": 920002, "name": "Synthetic WR Two", "position": "WR", "eligiblePositions": ["RB/WR", "WR", "WR/TE", "FLEX", "OP"], "lineupSlot": "WR", "proTeam": "CIN", "injuryStatus": "Doubtful", "percentOwned": 99, "percentStarted": 70, "stats": {}, "acquisitionType": "ADD", "acquisitionDate": 1917200000000, "keeperValue": 0, "keeperValueFuture": 0 },
+      { "playerId": -16013, "name": "Synthetic D/ST Two", "position": "D/ST", "eligiblePositions": ["D/ST"], "lineupSlot": "Bench", "proTeam": "MIA", "percentOwned": 40, "percentStarted": 30, "stats": {}, "acquisitionType": "DRAFT", "acquisitionDate": 1916000000000, "keeperValue": 0, "keeperValueFuture": 14 }
+    ] } }
+  ],
+  "historicalRosters": [
+    { "success": true, "data": { "leagueId": "424242", "teamId": 1, "teamName": "Synthetic Team One ", "snapshot": { "type": "week", "week": 1, "providerScoringPeriodId": 1 },
+      "limitations": { "acquisitionMetadataAvailable": false, "playerProTeamAvailable": false, "keeperValueFutureAvailable": false }, "keeperValueUnit": "draft_round", "isKeeperLeague": false, "roster": [
+      { "playerId": 910001, "name": "Synthetic QB One", "position": "QB", "eligiblePositions": ["QB", "OP"], "lineupSlot": "QB", "proTeam": "KC", "injuryStatus": "Out", "percentOwned": 97.5, "percentStarted": 90.1, "stats": { "passYds": 500, "passTD": 4 }, "acquisitionType": null, "acquisitionDate": null, "keeperValue": 0 },
+      { "playerId": 930001, "name": "Synthetic Later Dropped RB", "position": "RB", "eligiblePositions": ["RB", "RB/WR", "FLEX", "OP"], "lineupSlot": "RB", "percentOwned": 70, "percentStarted": 20, "stats": { "rushYds": 90 }, "acquisitionType": null, "acquisitionDate": null, "keeperValue": 0 },
+      { "playerId": 910004, "name": "Synthetic TE On IR", "position": "TE", "eligiblePositions": ["WR/TE", "TE", "FLEX", "OP"], "lineupSlot": "IR", "percentOwned": 99, "percentStarted": 50, "stats": {}, "acquisitionType": null, "acquisitionDate": null, "keeperValue": 0 }
+    ] } }
+  ],
+  "standings": { "success": true, "data": { "leagueId": "424242", "seasonYear": 2030, "seasonPhase": "regular_season", "seasonComplete": false, "standings": [
+    { "teamId": 2, "teamName": "Synthetic Team Two", "abbrev": "TWO", "wins": 2, "losses": 0, "ties": 0, "winPercentage": 1, "pointsFor": 250.5, "pointsAgainst": 200.25, "playoffSeed": 1, "draftDayProjectedRank": 2, "currentProjectedRank": 1, "finalRank": null, "championshipWon": null, "playoffOutcome": null, "outcomeConfidence": null, "madePlayoffs": true, "rank": 1 },
+    { "teamId": 1, "teamName": "Synthetic Team One ", "abbrev": "ONE", "wins": 0, "losses": 2, "ties": 0, "winPercentage": 0, "pointsFor": 200.25, "pointsAgainst": 250.5, "playoffSeed": 2, "draftDayProjectedRank": 1, "currentProjectedRank": 2, "finalRank": null, "championshipWon": null, "playoffOutcome": null, "outcomeConfidence": null, "madePlayoffs": true, "rank": 2 }
+  ] } },
+  "matchups": { "success": true, "data": { "leagueId": "424242", "seasonYear": 2030, "currentScoringPeriod": 3, "matchupPeriod": 3, "matchups": [
+    { "matchupPeriodId": 3, "home": { "teamId": 1, "teamName": "Synthetic Team One ", "totalPoints": 0, "totalProjectedPoints": 118.4, "pointsByScoringPeriod": { "3": 12.5 } },
+      "away": { "teamId": 2, "teamName": "Synthetic Team Two", "totalPoints": 0, "totalProjectedPoints": 121.9, "pointsByScoringPeriod": { "3": 0 } }, "winner": "UNDECIDED", "playoffTierType": "NONE" }
+  ] } },
+  "freeAgents": { "success": true, "data": { "leagueId": "424242", "seasonYear": 2030, "position": "ALL", "count": 4, "ordering": "platform_rostered_rate_desc", "capabilities": { "acquisitionState": true, "rosteredRate": true, "startedRate": true }, "ownershipScope": "platform_global", "freeAgents": [
+    { "playerId": 930001, "name": "Synthetic Later Dropped RB", "position": "RB", "eligiblePositions": ["RB", "RB/WR", "FLEX", "OP"], "proTeam": "PIT", "injuryStatus": "Active", "percentOwned": 70, "percentStarted": 20, "status": "FREEAGENT", "seasonPoints": 16.5, "pointsPerGame": 8.25, "projectedSeasonPoints": 170, "acquisitionState": "free_agent", "team": "PIT", "id": "930001" },
+    { "playerId": 930002, "name": "Synthetic Waiver WR", "position": "WR", "eligiblePositions": ["RB/WR", "WR", "WR/TE", "FLEX", "OP", "CB", "DB", "DP"], "proTeam": "ATL", "injuryStatus": "Active", "percentOwned": 60, "percentStarted": 10, "status": "WAIVERS", "waiverProcessDate": 1916982000000, "seasonPoints": 3, "pointsPerGame": 1, "projectedSeasonPoints": 110, "acquisitionState": "waivers", "team": "ATL", "id": "930002", "waiverClearsAt": "2030-09-30T07:00:00.000Z" },
+    { "playerId": 930003, "name": "Synthetic Unmapped K", "position": "K", "eligiblePositions": ["Rookie", "K"], "proTeam": "GB", "injuryStatus": "Active", "percentOwned": 25, "percentStarted": 20, "status": "FREEAGENT", "seasonPoints": 12, "pointsPerGame": 6, "projectedSeasonPoints": 120, "acquisitionState": "free_agent", "team": "GB", "id": "930003" },
+    { "playerId": -16020, "name": "Synthetic D/ST Free", "position": "D/ST", "eligiblePositions": ["D/ST"], "proTeam": "DEN", "percentOwned": 80, "percentStarted": 50, "status": "FREEAGENT", "seasonPoints": 11, "pointsPerGame": 5.5, "projectedSeasonPoints": 124, "acquisitionState": "free_agent", "team": "DEN", "id": "-16020" }
+  ] } },
+  "transactions": { "success": true, "data": { "platform": "espn", "sport": "football", "league_id": "424242", "season_year": 2030,
+    "window": { "mode": "recent_two_weeks", "unit": "matchup_period", "requested_week": null, "weeks": [3, 2], "returned_rows": 6 },
+    "source": "mTransactions2", "limitations": { "structured_details_incomplete": true, "possibly_truncated": true },
+    "transactions": [
+      { "transaction_id": "syn-0001", "type": "trade_proposal", "status": "pending", "timestamp": 1917300000000, "date": "2030-09-25", "week": 3, "provider_scoring_period_id": 3, "team_ids": ["1"], "players_added": [], "players_dropped": [], "faab_bid": 0 },
+      { "transaction_id": "syn-0002", "type": "waiver", "status": "pending", "timestamp": 1917290000000, "date": "2030-09-24", "week": 3, "provider_scoring_period_id": 3, "team_ids": ["1"], "players_added": [{ "id": "930002", "name": "Synthetic Waiver WR", "position": "WR", "team": "ATL" }], "players_dropped": [{ "id": "910007", "name": "Synthetic Unmapped RB", "position": "RB", "team": "SEA" }], "faab_bid": 0 },
+      { "transaction_id": "syn-0003", "type": "waiver", "status": "complete", "timestamp": 1917200000000, "date": "2030-09-23", "week": 3, "provider_scoring_period_id": 3, "team_ids": ["2"], "players_added": [{ "id": "920002", "name": "Synthetic WR Two", "position": "WR", "team": "CIN" }], "players_dropped": [{ "id": "-16020", "name": "Synthetic D/ST Free", "position": "D/ST", "team": "DEN" }], "faab_bid": 0 },
+      { "transaction_id": "syn-0004", "type": "waiver", "status": "failed", "timestamp": 1917200000000, "date": "2030-09-23", "week": 3, "provider_scoring_period_id": 3, "team_ids": ["1"], "players_added": [{ "id": "920002", "name": "Synthetic WR Two", "position": "WR", "team": "CIN" }], "players_dropped": [], "faab_bid": 0 },
+      { "transaction_id": "syn-0005", "type": "add", "status": "complete", "timestamp": 1917100000000, "date": "2030-09-22", "week": 3, "provider_scoring_period_id": 3, "team_ids": ["1"], "players_added": [{ "id": "910007", "name": "Synthetic Unmapped RB", "position": "RB", "team": "SEA" }], "players_dropped": [{ "id": "930001", "name": "Synthetic Later Dropped RB", "position": "RB", "team": "PIT" }], "faab_bid": 0 },
+      { "transaction_id": "syn-0006", "type": "trade", "status": "complete", "timestamp": 1917000000000, "date": "2030-09-19", "week": 2, "provider_scoring_period_id": 2, "team_ids": ["1", "2"], "players_added": [], "players_dropped": [],
+        "trade_sides": [ { "team_id": "1", "acquired": [{ "id": "910005", "name": "Synthetic Dual RB WR", "position": "WR", "team": "DET" }], "gave_up": [{ "id": "930009", "name": "Synthetic Traded Away", "position": "TE", "team": "TB" }] },
+                         { "team_id": "2", "acquired": [{ "id": "930009", "name": "Synthetic Traded Away", "position": "TE", "team": "TB" }], "gave_up": [{ "id": "910005", "name": "Synthetic Dual RB WR", "position": "WR", "team": "DET" }] } ], "faab_bid": 0 }
+    ],
+    "teams": { "1": "Synthetic Team One ", "2": "Synthetic Team Two" }, "truncated": true, "count": 6 } },
+  "draft": { "success": true, "data": { "platform": "espn", "sport": "football", "leagueId": "424242", "seasonYear": 2030, "draft": { "type": "snake", "status": "complete" }, "picks": [
+    { "round": 1, "selectionInRound": 1, "overallPick": 1, "selectionTeamId": 2, "playerId": 920001, "isKeeper": false, "placement": { "status": "confirmed", "source": "provider_pick" } },
+    { "round": 1, "selectionInRound": 2, "overallPick": 2, "selectionTeamId": 1, "playerId": 910001, "isKeeper": false, "placement": { "status": "confirmed", "source": "provider_pick" } },
+    { "round": 2, "selectionInRound": 1, "overallPick": 3, "selectionTeamId": 1, "playerId": -16012, "isKeeper": false, "placement": { "status": "confirmed", "source": "provider_pick" } },
+    { "round": 2, "selectionInRound": 2, "overallPick": 4, "selectionTeamId": 2, "playerId": -16013, "isKeeper": false, "placement": { "status": "confirmed", "source": "provider_pick" } }
+  ] } }
+}
