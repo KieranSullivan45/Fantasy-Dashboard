@@ -348,9 +348,9 @@ const LEVELS = { QB: { replacement_value: 10, eligible_starter_demand: 1 }, RB: 
 /** A rostered player: q = quality (Q), start = next_game start value. */
 const sp = (id, positions, q, start, extra = {}) => ({ id, positions, q, start, ...extra });
 /** Pickup value is deliberately extreme to prove the evaluator never reads it. */
-const decisionContext = (id, positions, { q, start, pickup = 999, games = 6, prior = 10, schedule = "scheduled", features = {}, signals = [] } = {}) => ({
+const decisionContext = (id, positions, { q, start, pickup = 999, games = 6, prior = 10, schedule = "scheduled", features = {}, signals = [], supported = true } = {}) => ({
   player: { player_id: id, fantasy_positions: positions },
-  model: { supported: true, player_value: q, start_value: { central: start }, pickup_value: { central: pickup },
+  model: { supported, player_value: q, start_value: { central: start }, pickup_value: { central: pickup },
     features: { current_games: games, prior: { ppg: prior }, feature_inputs: { snap_share: 0, carry_share: 0 }, ...features } },
   schedule: { status: schedule }, analytics: { signals } });
 const FILLERS = Object.fromEntries(["QB", "RB", "WR", "TE"].flatMap(pos => Array.from({ length: 12 }, (_, i) => {
@@ -691,4 +691,85 @@ test("a relevant game already kicked off withholds starter change (lock unverifi
   const side = sideOf(evaluated(built({ rosters: [started, ROSTER_2] }), ["a_wr2"], ["b_wr3"]), 1);
   assert.equal(side.starter_change, null); assert.notEqual(side.after.starter_total, null);
   assert.ok(side.unknowns.some(u => u.field === "starter_change" && u.player_ids.includes("a_qb")));
+});
+
+// ---- Owner amendment 2026-09-26: unsupported K/DEF/IDP slots; drop count before bench VOR -------
+
+const KDEF_ROSTER = ["QB", "RB", "WR", "FLEX", "K", "DEF", "BN", "BN"];
+const kicker = (id, q = 8) => sp(id, ["K"], q, null, { context: { supported: false } });
+const defense = id => sp(id, ["DEF"], 7, null, { context: { supported: false } });
+const kdef = (extra = {}) => built({ rosters: [[...ROSTER_1, kicker("k1"), defense("d1")], [...ROSTER_2, kicker("k2"), defense("d2")]], positions: KDEF_ROSTER, ...extra });
+
+test("K and DEF slots count for legality but never poison supported valuation; their value stays null, never zero", () => {
+  const context = kdef();
+  assert.equal(context.values.k1.next_game, null); assert.equal(context.values.k1.vor, null);
+  const e = evaluated(context, ["a_wr1"], ["b_wr3"]), one = sideOf(e, 1);
+  assert.equal(e.status, "evaluated");
+  close(one.before.starter_total, 61, "offensive value slots only"); close(one.starter_change, -5, "determined supported starter change");
+  close(one.depth_change, -1, "K/DEF excluded from bench VOR");
+  assert.equal(one.before.filled_starter_slots, 6, "K and DEF slots are filled for legality");
+  const k = one.before.lineup.find(s => s.slot === "K");
+  assert.deepEqual(k, { slot: "K", player_id: "k1", value: null, valued: false }, "unvalued, never zero");
+  assert.deepEqual(one.before.unvalued_slots, ["K", "DEF"]); assert.deepEqual(one.before.unvalued_players, ["d1", "k1"]);
+  assert.ok(!one.before.bench.includes("k1") && !one.before.bench.includes("d1"));
+  assert.ok(one.unknowns.some(u => u.field === "unvalued_starter_slots" && u.slots.join() === "K,DEF"));
+  assert.ok(one.warnings.some(w => /K, DEF are excluded from football-value totals/.test(w)));
+  // An empty K slot lowers the legal fill but still does not poison the value.
+  const noKicker = built({ rosters: [[...ROSTER_1, defense("d1")], [...ROSTER_2, kicker("k2"), defense("d2")]], positions: KDEF_ROSTER });
+  const empty = sideOf(evaluated(noKicker, ["a_wr2"], ["b_wr3"]), 1).before;
+  assert.equal(empty.filled_starter_slots, 5); close(empty.starter_total, 61, "value unchanged by the empty K slot");
+});
+
+test("K/DEF missing values do not poison forced-drop ranking; K/DEF are never forced-drop candidates", () => {
+  const e = evaluated(kdef(), ["a_rb2", "a_wr2"], ["b_wr1"]), receiver = sideOf(e, 2);
+  assert.equal(e.status, "evaluated");
+  assert.equal(receiver.forced_drops.status, "selected"); assert.deepEqual(receiver.forced_drops.dropped, ["b_wr3"]);
+  close(receiver.after.starter_total, 54, "same modeled lineup as the league without K/DEF");
+  assert.ok(receiver.forced_drops.excluded.some(x => x.player_id === "k2" && x.reasons.includes("K/DST/IDP advanced value unsupported")));
+});
+
+test("explicitly trading a player without modeled football value is unsupported, never a completed valuation", () => {
+  const context = kdef();
+  for (const [a, b] of [[["k1"], ["b_wr3"]], [["a_wr2"], ["d2"]], [["a_wr2", "k1"], ["b_wr3"]]]) {
+    const e = evaluated(context, a, b);
+    assert.equal(e.status, "unsupported"); assert.deepEqual(e.sides, []);
+    assert.ok(e.errors.every(x => x.code === "UNSUPPORTED_ASSET") && e.errors.some(x => ["k1", "d2"].includes(x.asset_id)));
+  }
+  // A skill-position player whose model is unsupported is not silently valued either.
+  const unmodeled = built({ rosters: [ROSTER_1.map(p => p.id === "a_wr2" ? { ...p, context: { supported: false } } : p), ROSTER_2] });
+  const u = evaluated(unmodeled, ["a_wr2"], ["b_wr3"]);
+  assert.equal(u.status, "unsupported"); assert.deepEqual(u.errors.map(x => [x.code, x.asset_id]), [["UNSUPPORTED_ASSET", "a_wr2"]]);
+});
+
+test("verified reserve or taxi placement beats an unnecessary forced drop when the lineup is equal", () => {
+  const incoming = [sp("b_star", ["WR"], 30, 30, { injury: "IR" }), ...ROSTER_2.filter(p => p.id !== "b_wr3")];
+  const full = [...ROSTER_1, sp("a_x", ["WR"], 10, 10)];
+  const run = options => sideOf(evaluated(built({ rosters: [full, incoming], ...options }), ["a_wr2"], ["b_star", "b_te"]), 1);
+  const ir = run({ settings: { reserve_slots: 1, taxi_slots: 0 }, placement: { b_star: { reserve: "verified", taxi: "unknown" } } });
+  assert.deepEqual(ir.reserve_placement.map(p => [p.player_id, p.placement]), [["b_star", "reserve"], ["b_te", "active"]]);
+  assert.equal(ir.forced_drops.status, "none"); assert.equal(ir.forced_drops.dropped, null);
+  const taxi = run({ settings: { reserve_slots: 0, taxi_slots: 1 }, placement: { b_star: { reserve: "unknown", taxi: "verified" } } });
+  assert.equal(taxi.reserve_placement.find(p => p.player_id === "b_star").placement, "taxi"); assert.equal(taxi.forced_drops.status, "none");
+  // Without verified eligibility the player is never placed: one forced drop, the high-VOR injured player stays active.
+  const unverified = run({ settings: { reserve_slots: 1, taxi_slots: 1 } });
+  assert.equal(unverified.reserve_placement.find(p => p.player_id === "b_star").placement, "active");
+  assert.equal(unverified.forced_drops.status, "selected"); assert.equal(unverified.forced_drops.dropped.length, 1);
+  const noTaxiCapability = run({ settings: { reserve_slots: 0, taxi_slots: 1 }, placement: { b_star: { reserve: "unknown", taxi: "verified" } },
+    capabilities: { IR: { status: "available" }, taxiSquads: { status: "unsupported" } } });
+  assert.equal(noTaxiCapability.reserve_placement.find(p => p.player_id === "b_star").placement, "active");
+});
+
+test("a better modeled starting lineup still outranks a zero-drop reserve placement", () => {
+  const incoming = [sp("b_star", ["WR"], 30, 30), ...ROSTER_2.filter(p => p.id !== "b_wr3")];
+  const context = built({ rosters: [[...ROSTER_1, sp("a_x", ["WR"], 10, 10)], incoming], settings: { reserve_slots: 1, taxi_slots: 0 },
+    placement: { b_star: { reserve: "verified", taxi: "unknown" } } });
+  const side = sideOf(evaluated(context, ["a_wr2"], ["b_star", "b_te"]), 1);
+  assert.equal(side.reserve_placement.find(p => p.player_id === "b_star").placement, "active", "starting b_star beats reserving him");
+  assert.equal(side.forced_drops.status, "selected"); assert.equal(side.forced_drops.dropped.length, 1);
+  assert.ok(side.after.lineup.some(s => s.player_id === "b_star"));
+  const state = (total, bench) => ({ filled_starter_slots: 4, starter_total: total, bench, unknown_lineup_players: [] });
+  assert.deepEqual(compareCandidates(context, { dropped: [], reserve_keys: [], state: state(60, []) }, { dropped: ["a_x"], reserve_keys: [], state: state(60, ["b_te"]) }),
+    { order: -1, key: "drop_count" }, "equal lineups: fewer drops first, before bench VOR");
+  assert.deepEqual(compareCandidates(context, { dropped: [], reserve_keys: [], state: state(60, []) }, { dropped: ["a_x"], reserve_keys: [], state: state(61, []) }),
+    { order: 1, key: "starter_total" });
 });
