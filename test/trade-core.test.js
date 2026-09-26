@@ -186,7 +186,7 @@ test("existing basis check is applied unchanged; trade-local metadata mismatches
   assert.deepEqual(checkBasis("", "").map(e => e.code), ["STALE_BASIS"]);
   const base = { provider: "sleeper", league_id: "L1", season: 2026, week: 3, roster_positions: ["QB", "FLEX", "BN"], identity_mode: "selected_roster", selected_roster_id: 2 };
   const sources = () => ({ snapshot: { ...base, roster_ids: [2, 1] }, value_source: { ...base, season: "2026", model_version: "m", feature_version: "f", roster_ids: ["1", "2"] },
-    protection: { provider: "sleeper", league_id: "L1", season: 2026, week: 3, model_version: "m", feature_version: "f" } });
+    protection: { provider: "sleeper", league_id: "L1", season: 2026, week: 3, roster_positions: ["QB", "FLEX", "BN"], model_version: "m", feature_version: "f" } });
   assert.deepEqual(compareContextMetadata(sources()), { ok: true, status: "evaluated", errors: [] }, "canonical scalars and roster-id sets");
   const mismatches = {
     week: s => { s.value_source.week = 4; }, model_version: s => { s.protection.model_version = "m2"; },
@@ -207,8 +207,38 @@ test("existing basis check is applied unchanged; trade-local metadata mismatches
   assert.deepEqual(compareContextMetadata(missing).errors.map(e => e.field), ["protection"]);
   const optional = sources(); optional.snapshot.scoring_identity = "ppr";
   assert.equal(compareContextMetadata(optional).ok, true, "scoring identity compared only where both sources carry it");
+  const protectionRosters = sources(); protectionRosters.protection.roster_ids = ["2", "1"];
+  assert.equal(compareContextMetadata(protectionRosters).ok, true, "protection roster_ids compared where declared");
+  protectionRosters.protection.roster_ids = ["1", "9"];
+  assert.deepEqual(compareContextMetadata(protectionRosters).errors.map(e => [e.code, e.field]), [["CONTEXT_MISMATCH", "roster_ids"]]);
   const spectator = sources(); for (const s of [spectator.snapshot, spectator.value_source]) { s.identity_mode = "spectator"; s.selected_roster_id = null; }
   assert.equal(compareContextMetadata(spectator).ok, true);
+});
+
+test("roster identities and protection lineup structure are required trade-local metadata", () => {
+  const base = { provider: "sleeper", league_id: "L1", season: 2026, week: 3, roster_positions: ["QB", "SUPER_FLEX", "BN"], identity_mode: "selected_roster", selected_roster_id: 2 };
+  const sources = () => ({ snapshot: { ...base, roster_ids: [1, 2] }, value_source: { ...base, model_version: "m", feature_version: "f", roster_ids: ["2", "1"] },
+    protection: { provider: "sleeper", league_id: "L1", season: 2026, week: 3, roster_positions: ["QB", "SUPER_FLEX", "BN"], model_version: "m", feature_version: "f" } });
+  assert.equal(compareContextMetadata(sources()).ok, true);
+  const cases = {
+    "missing snapshot roster_ids": s => { delete s.snapshot.roster_ids; },
+    "null value_source roster_ids": s => { s.value_source.roster_ids = null; },
+    "missing value_source roster_ids": s => { delete s.value_source.roster_ids; },
+    "mismatched roster_ids": s => { s.snapshot.roster_ids = [1, 3]; },
+    "extra roster in one source": s => { s.value_source.roster_ids = ["1", "2", "3"]; },
+    "single roster cannot cover a two-roster proposal": s => { s.snapshot.roster_ids = [2]; s.value_source.roster_ids = ["2"]; },
+    "duplicate roster ids": s => { s.snapshot.roster_ids = [2, 2]; s.value_source.roster_ids = ["2", "2"]; },
+    "missing protection roster_positions": s => { delete s.protection.roster_positions; },
+    "mismatched protection roster_positions": s => { s.protection.roster_positions = ["QB", "FLEX", "BN"]; },
+  };
+  for (const [name, mutate] of Object.entries(cases)) {
+    const s = sources(); mutate(s);
+    const result = compareContextMetadata(s);
+    assert.equal(result.ok, false, name); assert.equal(result.status, "invalid", name);
+    assert.ok(result.errors.length && result.errors.every(e => e.code === "CONTEXT_MISMATCH"), name);
+    const field = name.includes("roster_positions") ? "roster_positions" : "roster_ids";
+    assert.ok(result.errors.some(e => e.field === field), `${name} names ${field}`);
+  }
 });
 
 test("capabilities are explicit; anything but available is unsupported", () => {
@@ -271,6 +301,21 @@ test("invalid and unsupported envelopes carry matching errors and no valuation",
   const invalid = createTradeEvaluation({ errors: [tradeError("STALE_BASIS"), tradeError("PACKAGE_TOO_LARGE")] });
   assert.equal(invalid.status, "invalid"); assert.equal(invalid.market_value, null);
   assert.equal(validateTradeEvaluation({ ...invalid, status: "unsupported" }).ok, false);
+  const valuedSide = () => { const s = emptySideResult(1, { sends: ["a2"], receives: ["b2"] }); s.forced_drops = { ...s.forced_drops, required: 0, status: "none" }; return s; };
+  const injections = {
+    "valued side": s => { s.before = { lineup: [], starter_total: 10, depth_total: 2 }; s.after = { lineup: [], starter_total: 12, depth_total: 1 }; s.starter_change = 2; s.depth_change = -1; },
+    "before/after lineup valuation": s => { s.before = { lineup: [{ slot: "QB", player_id: "a1" }], starter_total: 10, depth_total: null }; s.after = { lineup: [{ slot: "QB", player_id: "b1" }], starter_total: null, depth_total: null }; },
+    "numeric deltas": s => { s.starter_change = 1.5; s.depth_change = 0; },
+    "selected forced drops": s => { s.forced_drops = { ...s.forced_drops, required: 1, status: "selected", dropped: ["a3"] }; },
+    "empty skeleton side": () => {},
+  };
+  for (const envelope of [invalid, unsupported]) for (const [name, inject] of Object.entries(injections)) {
+    const side = valuedSide(); inject(side);
+    const bad = { ...structuredClone(envelope), sides: [side] };
+    const result = validateTradeEvaluation(bad);
+    assert.equal(result.ok, false, `${envelope.status}: ${name}`);
+    assert.ok(result.violations.some(v => /carry no sides or partial valuation/.test(v)), `${envelope.status}: ${name}`);
+  }
   assert.equal(statusForErrors([]), "evaluated");
   assert.equal(statusForErrors([tradeError("UNSUPPORTED_DROP_COUNT")]), "unsupported");
   assert.equal(statusForErrors([tradeError("OVER_CAPACITY_BEFORE"), tradeError("CAPACITY_UNKNOWN")]), "withheld");
