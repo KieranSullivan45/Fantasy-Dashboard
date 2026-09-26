@@ -50,7 +50,7 @@ Status values: `proposed` · `ready` · `in-progress` · `in-review` · `blocked
 - Blockers: owner review and merge. Remaining ADR 0001 open questions do not block V04-01 except question 7 (the `add-drop.js` protection-evidence helper), which is confirmed at assignment.
 
 ### V04-01 — Trade domain contracts and evaluator core
-- Status: in-progress (phase A approved at `392856a`; phase B baseline accepted at `982cf15`; owner amendment of 2026-09-26 implemented; awaiting Codex V04-02 findings and owner review; not merged)
+- Status: in-review (phase A approved at `392856a`; phase B baseline accepted at `982cf15`; owner amendment of 2026-09-26 implemented; awaiting Codex V04-02 findings and owner review; not merged)
 - Owner: Claude Code
 - Reviewer: Codex (first pass), then repository owner
 - Branch: `feat/v04-01-trade-evaluator-core`, created from updated `main`
