@@ -18,3 +18,20 @@ export interface WaiverTransaction extends Transaction { faab:number|null; }
 export type ProviderCapabilities = Record<string,{status:'available'|'unsupported'|'unavailable';reason:string|null}>;
 // Unavailable capabilities throw a safe ProviderError; null never implies zero.
 export interface FantasyProvider { providerId:ProviderId; getProviderCapabilities():ProviderCapabilities; getSnapshot(id:string,options?:unknown):unknown; getDecisionContext(id:string,options?:unknown):unknown; resolveUser(input:string):unknown; discoverLeagues(options:unknown):unknown; getLeague(id:string,options?:unknown):unknown; getLeagueSettings(id:string,options?:unknown):unknown; getRosters(id:string,options?:unknown):unknown; getMatchups(id:string,options?:unknown):unknown; getTransactions(id:string,options?:unknown):unknown; getWaiverState(id:string,options?:unknown):unknown; getPlayers(id:string,options?:unknown):unknown; getUserRoster(id:string,options?:unknown):unknown; getSeasonState():unknown; getStandings(id:string,options?:unknown):unknown; getDraftPicks(id:string,options?:unknown):unknown; }
+// Internal ESPN facts contract (espn-facts-1): every ESPN source (authorized import, Flaim transport) maps into it and
+// snapshotFromEspnFacts builds snapshot 0.2 from it. In-memory only; never archived or returned by public routes.
+export interface EspnFactsPlayer { espn_id:string; name:string|null; position:string|null; eligibility:string[]; team:string|null; provider_team_id:number|null; injury_status:string|null; injured:boolean|null; }
+export interface EspnFacts {
+ version:'espn-facts-1'; provider:'espn';
+ provenance:{ source:string; source_transport:'authorized_import'|'flaim'; access:'authorized_offline'|'flaim_live'; private_live:boolean };
+ league:{ id:string; season:number; name:string|null; scoring_period:number|null; current_season_verified:boolean; slot_counts:Record<string,number>; matchup_periods:Record<string,number[]>|null; playoff_teams:number|null };
+ scoring:{ available:boolean; items:unknown[]|null }; user_team_id:number|null;
+ teams:Array<{ id:number; name:string|null; owner_id:string|null; record:StandingsEntry; playoff_seed?:number|null; waiver_rank:number|null; faab:{spent:number|null; budget:number|null};
+  entries:Array<{ slot:string; player:EspnFactsPlayer; acquisition:{type:string|null; date:string|null}|null }> }>;
+ matchups:Array<{ id:string|number; matchup_period:number; final:boolean|null; sides:Array<{team_id:number; points:number|null}> }>;
+ available:{ players:Array<{player:EspnFactsPlayer; acquisition_state:'free_agent'|'waivers'|null; waiver_clears_at:string|null}>; complete:false; limit:number|null }|null;
+ transactions:{ items:Array<{ id:string; type:string; status:string; timestamp:number|null; week:number|null; team_ids:number[]; adds:unknown[]; drops:unknown[]; private:boolean; faab_bid:null }>; truncated:boolean|null }|null;
+ draft:{ status:string|null; picks:Array<{round:number; pick:number; overall:number; team_id:number; espn_id:string; keeper:boolean}>; ownership:null }|null;
+ roster_history:Array<{ week:number; team_id:number; entries:unknown[] }>;
+ warnings:Array<{code:string; resource:string; message:string}>;
+}
