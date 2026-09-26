@@ -5,7 +5,12 @@ import {
   TRADE_SCHEMA_VERSION, ERROR_CODES, HORIZONS, horizonFor, compareIds, compareIdSequences, canonicalIdSequence,
   validateTradeProposal, validateTradeContext, effectiveProtection, checkBasis, compareContextMetadata, slotStructure,
   capabilityAvailable, createTradeEvaluation, emptySideResult, packageStatus, validateTradeEvaluation, statusForErrors, tradeError,
+  FORBIDDEN_EVALUATION_KEYS,
 } from "../lib/trade/contracts.js";
+import { buildTradeContext } from "../lib/trade/context.js";
+import { evaluateTrade, evaluateTradeFromInputs, resolveForcedDrops, compareCandidates, reserveAllocations } from "../lib/trade/evaluate.js";
+import { dropProtections, transactionEvaluator } from "../lib/decision/add-drop.js";
+import { decisionBasis } from "../lib/decision/basis.js";
 
 // Synthetic two-roster context (not league data).
 const provenance = { producer: "add-drop protections (synthetic test)", population: "full_internal_contexts", provider: "sleeper",
@@ -331,4 +336,359 @@ test("invalid and unsupported envelopes carry matching errors and no valuation",
   for (const code of ["STALE_BASIS", "CONTEXT_MISMATCH", "UNKNOWN_ROSTER", "SAME_ROSTER", "EMPTY_SIDE", "ASSET_NOT_OWNED", "DUPLICATE_ASSET", "UNSUPPORTED_ASSET",
     "UNSUPPORTED_HORIZON", "PACKAGE_TOO_LARGE", "UNSUPPORTED_TRADE_SHAPE", "UNSUPPORTED_SLOTS", "UNSUPPORTED_DROP_COUNT", "CAPACITY_UNKNOWN",
     "OVER_CAPACITY_BEFORE", "FORCED_DROP_BLOCKED", "FORCED_DROP_UNDETERMINED"]) assert.ok(ERROR_CODES[code], `spec code ${code}`);
+});
+
+// ---- Phase B: protection helper, context builder and evaluator ---------------------------------
+// Synthetic fixtures only (not league data). Protection evidence is produced by the add/drop helper on a full
+// synthetic contexts population (rostered players plus free-agent fillers), never hand-written.
+
+const TRADE_ROSTER = ["QB", "RB", "WR", "FLEX", "BN", "BN"];
+const LEVELS = { QB: { replacement_value: 10, eligible_starter_demand: 1 }, RB: { replacement_value: 8, eligible_starter_demand: 1.5 },
+  WR: { replacement_value: 8, eligible_starter_demand: 1.5 }, TE: { replacement_value: 6, eligible_starter_demand: 0.5 } };
+/** A rostered player: q = quality (Q), start = next_game start value. */
+const sp = (id, positions, q, start, extra = {}) => ({ id, positions, q, start, ...extra });
+/** Pickup value is deliberately extreme to prove the evaluator never reads it. */
+const decisionContext = (id, positions, { q, start, pickup = 999, games = 6, prior = 10, schedule = "scheduled", features = {}, signals = [] } = {}) => ({
+  player: { player_id: id, fantasy_positions: positions },
+  model: { supported: true, player_value: q, start_value: { central: start }, pickup_value: { central: pickup },
+    features: { current_games: games, prior: { ppg: prior }, feature_inputs: { snap_share: 0, carry_share: 0 }, ...features } },
+  schedule: { status: schedule }, analytics: { signals } });
+const FILLERS = Object.fromEntries(["QB", "RB", "WR", "TE"].flatMap(pos => Array.from({ length: 12 }, (_, i) => {
+  const id = `fa_${pos}${i}`; return [id, decisionContext(id, [pos], { q: 60, start: 60 })];
+})));
+const META = { provider: "sleeper", league_id: "L1", season: "2026", week: 3 };
+const VERSIONS = { model_version: "decision-0.3.2", feature_version: "weekly-features-2" };
+
+function tradeInputs({ rosters, positions = TRADE_ROSTER, levels = LEVELS, settings = { reserve_slots: 0, taxi_slots: 0 }, scoring = { rec: 1 },
+  capabilities = { IR: { status: "available" }, taxiSquads: { status: "available" } }, placement = {}, omitEvidence = [], identity } = {}) {
+  const snapshotPlayer = p => ({ player_id: p.id, fantasy_positions: p.positions, injury_status: p.injury ?? null, status: p.status ?? "Active", reserve: !!p.reserve, taxi: !!p.taxi });
+  const snapshot = { identity: identity ?? { provider: "sleeper", provider_user_id: null, selected_roster_id: null, mode: "spectator" },
+    league: { league_id: "L1", season: "2026", total_rosters: rosters.length, roster_positions: positions, scoring_settings: scoring, settings },
+    matchup_week: 3, my_roster: null,
+    rosters: rosters.map((players, i) => ({ roster_id: i + 1, owner_id: `u${i + 1}`, starter_slots: [], all_players: players.map(snapshotPlayer) })) };
+  const contexts = structuredClone(FILLERS);
+  for (const p of rosters.flat()) contexts[p.id] = decisionContext(p.id, p.positions, { q: p.q, start: p.start, ...p.context });
+  const players = dropProtections(snapshot.rosters.flatMap(r => r.all_players), positions, contexts).filter(p => !omitEvidence.includes(p.player_id));
+  const metadata = { ...META, roster_positions: positions, identity_mode: snapshot.identity.mode, selected_roster_id: snapshot.identity.selected_roster_id,
+    roster_ids: snapshot.rosters.map(r => r.roster_id), ...VERSIONS };
+  return { snapshot, capabilities, placement,
+    valueSource: { basis: decisionBasis(snapshot), metadata, contexts, levels },
+    protectionEvidence: { players, producer: "add-drop dropProtections (synthetic test)", population: "full_internal_contexts", metadata: { ...META, roster_positions: positions, ...VERSIONS } } };
+}
+const built = options => { const b = buildTradeContext(tradeInputs(options)); assert.deepEqual(b.errors, []); return b.context; };
+const offer = (a, b, horizon = "next_game") => ({ sides: [{ roster_id: 1, sends: a.map(id => ({ type: "player", id })) }, { roster_id: 2, sends: b.map(id => ({ type: "player", id })) }], horizon });
+const evaluated = (context, a, b) => { const e = evaluateTrade(context, offer(a, b)); assert.deepEqual(validateTradeEvaluation(e).violations, [], "contract invariants hold"); return e; };
+const sideOf = (e, id) => e.sides.find(s => s.roster_id === String(id));
+const close = (actual, expected, message) => assert.ok(actual !== null && Math.abs(actual - expected) < 1e-9, `${message}: ${actual} ≠ ${expected}`);
+
+// Roster 1 has one open active slot; roster 2 is full (6 active for capacity 6).
+const ROSTER_1 = [sp("a_qb", ["QB"], 20, 20), sp("a_rb1", ["RB"], 15, 15), sp("a_rb2", ["RB"], 12, 12), sp("a_wr1", ["WR"], 14, 14), sp("a_wr2", ["WR"], 9, 9)];
+const ROSTER_2 = [sp("b_qb", ["QB"], 18, 18), sp("b_rb", ["RB"], 13, 13), sp("b_wr1", ["WR"], 16, 16), sp("b_wr2", ["WR"], 11, 11), sp("b_te", ["TE"], 9, 9), sp("b_wr3", ["WR"], 7, 7)];
+const base = (overrides = {}) => built({ rosters: [ROSTER_1, ROSTER_2], ...overrides });
+const injure = (roster, ids = null) => roster.map(p => (ids === null || ids.includes(p.id) ? { ...p, injury: "Out" } : p));
+
+test("protection helper is identical to transactionEvaluator's protected players on the same full inputs", () => {
+  const players = [
+    { player_id: "p_ok", fantasy_positions: ["WR"] }, { player_id: "p_unknown", fantasy_positions: ["WR"] },
+    { player_id: "p_rookie", fantasy_positions: ["RB"] }, { player_id: "p_inj", fantasy_positions: ["WR"], injury_status: "IR" },
+    { player_id: "p_kick", fantasy_positions: ["WR"] }, { player_id: "p_k", fantasy_positions: ["K"] }, { player_id: "p_qb", fantasy_positions: ["QB"] },
+    { player_id: "p_role", fantasy_positions: ["WR"] }, { player_id: "p_rb", fantasy_positions: ["RB"] }, { player_id: "p_elite", fantasy_positions: ["WR"] },
+    { player_id: "p_reserve", fantasy_positions: ["WR"], reserve: true },
+  ];
+  const contexts = { ...structuredClone(FILLERS),
+    p_ok: decisionContext("p_ok", ["WR"], { q: 12, start: 12 }), p_unknown: decisionContext("p_unknown", ["WR"], { q: null, start: 5 }),
+    p_rookie: decisionContext("p_rookie", ["RB"], { q: 9, start: 9, games: 2, prior: null }), p_inj: decisionContext("p_inj", ["WR"], { q: 10, start: 10 }),
+    p_kick: decisionContext("p_kick", ["WR"], { q: 10, start: 10, schedule: "kickoff_passed" }), p_k: decisionContext("p_k", ["K"], { q: 8, start: null }),
+    p_qb: decisionContext("p_qb", ["QB"], { q: 15, start: 15 }), p_role: decisionContext("p_role", ["WR"], { q: 9, start: 9, signals: [{ label: "Target share rising" }] }),
+    p_rb: decisionContext("p_rb", ["RB"], { q: 9, start: 9, features: { feature_inputs: { snap_share: 0.5, carry_share: 0.4 } } }),
+    p_elite: decisionContext("p_elite", ["WR"], { q: 99, start: 30 }), p_reserve: decisionContext("p_reserve", ["WR"], { q: 5, start: 5 }) };
+  const levels = { WR: { replacement_value: 5 }, RB: { replacement_value: 5 }, QB: { replacement_value: 5 } };
+  const rules = new Set();
+  for (const positions of [["QB", "WR", "FLEX", "BN", "BN"], ["QB", "SUPER_FLEX", "WR", "BN", "IR"]]) {
+    const active = players.filter(p => !p.reserve && !p.taxi);
+    const expected = transactionEvaluator({ all_players: players }, positions, contexts, levels)({ player_id: "fa_WR0", fantasy_positions: ["WR"] }).protected_players;
+    const helper = dropProtections(active, positions, contexts);
+    for (const p of expected) p.reasons.forEach(r => rules.add(r.split(":")[0]));
+    assert.deepEqual(helper.filter(p => p.reasons.length), expected, positions.join(","));
+    assert.deepEqual(helper.map(p => p.player_id), active.map(p => p.player_id), "one entry per player, input order, unprotected included");
+    assert.deepEqual(helper.find(p => p.player_id === "p_ok").reasons, []);
+  }
+  assert.equal(rules.size, 9, `the fixture exercises every protection rule: ${[...rules]}`);
+  assert.ok(dropProtections(players, ["QB", "SUPER_FLEX", "BN"], contexts).find(p => p.player_id === "p_qb").reasons.includes("Structural Superflex QB asset"));
+  assert.ok(!dropProtections(players, ["QB", "WR", "BN"], contexts).find(p => p.player_id === "p_qb").reasons.includes("Structural Superflex QB asset"));
+  // The upper-tier percentile ranges over the full contexts map: a subset population changes the result.
+  const lows = Object.fromEntries(Array.from({ length: 7 }, (_, i) => [`low${i}`, decisionContext(`low${i}`, ["WR"], { q: 1, start: 1 })]));
+  assert.deepEqual(dropProtections([players[0]], ["WR"], contexts)[0].reasons, []);
+  assert.deepEqual(dropProtections([players[0]], ["WR"], { p_ok: contexts.p_ok, ...lows })[0].reasons, ["Upper-tier football asset"]);
+});
+
+test("context builder: basis, trade-local metadata, identity as supplied, values null when unknown", () => {
+  const context = base();
+  assert.equal(context.league.active_capacity, 6); assert.deepEqual(context.league.starter_slots, ["QB", "RB", "WR", "FLEX"]);
+  assert.deepEqual(context.identity, { mode: "spectator", roster_id: null }, "spectator: no inferred roster");
+  assert.deepEqual(context.values.a_wr2, { next_game: 9, quality: 9, vor: 1, vor_position: "WR", supported: true, schedule_status: "scheduled", injury_status: null });
+  assert.equal(context.replacement.QB, 10); assert.equal(context.league.starter_demand.QB, 1);
+  assert.deepEqual(context.league.reserve_slots, { count: 0, verified: true });
+  assert.equal(context.protection.length, 11);
+  assert.ok(context.protection.every(r => r.evidence === "sufficient" && r.provenance.population === "full_internal_contexts"));
+  const selected = built({ rosters: [ROSTER_1, ROSTER_2], identity: { provider: "sleeper", provider_user_id: "u2", selected_roster_id: 2, mode: "selected_roster" } });
+  assert.deepEqual(selected.identity, { mode: "selected_roster", roster_id: 2 });
+  const noValues = tradeInputs({ rosters: [ROSTER_1, ROSTER_2] }); delete noValues.valueSource.contexts.a_wr2;
+  assert.deepEqual(buildTradeContext(noValues).context.values.a_wr2,
+    { next_game: null, quality: null, vor: null, vor_position: null, supported: false, schedule_status: null, injury_status: null });
+  const stale = tradeInputs({ rosters: [ROSTER_1, ROSTER_2] }); stale.valueSource.basis = "other";
+  assert.deepEqual(buildTradeContext(stale).errors.map(e => e.code), ["STALE_BASIS"]);
+  const mismatch = tradeInputs({ rosters: [ROSTER_1, ROSTER_2] }); mismatch.protectionEvidence.metadata.week = 4;
+  assert.deepEqual(buildTradeContext(mismatch).errors.map(e => [e.code, e.field]), [["CONTEXT_MISMATCH", "week"]]);
+  const noProvider = tradeInputs({ rosters: [ROSTER_1, ROSTER_2] }); delete noProvider.snapshot.identity.provider;
+  assert.deepEqual(buildTradeContext(noProvider).errors.map(e => [e.code, e.field]), [["CONTEXT_MISMATCH", "provider"]], "provider is never defaulted");
+  const staleEval = evaluateTradeFromInputs(stale, offer(["a_wr2"], ["b_wr3"]));
+  assert.equal(staleEval.status, "invalid"); assert.deepEqual(staleEval.sides, []); assert.deepEqual(validateTradeEvaluation(staleEval).violations, []);
+});
+
+test("1-for-1: lineups re-optimized per roster, deltas from actual bench membership", () => {
+  const e = evaluated(base(), ["a_wr2"], ["b_wr3"]);
+  assert.equal(e.status, "evaluated"); assert.equal(e.market_value, null); assert.equal(e.legality, "conditional_known_rules");
+  const one = sideOf(e, 1), two = sideOf(e, 2);
+  assert.deepEqual([one.sends, one.receives], [["a_wr2"], ["b_wr3"]]);
+  close(one.before.starter_total, 61, "roster 1 before"); close(one.after.starter_total, 61, "roster 1 after");
+  assert.deepEqual(one.before.bench, ["a_wr2"]); assert.deepEqual(one.after.bench, ["b_wr3"]);
+  assert.equal(one.starter_change, 0); close(one.depth_change, -1, "positive VOR 1 leaves; VOR −1 adds max(0, −1)");
+  assert.equal(one.forced_drops.status, "none"); assert.equal(one.forced_drops.required, 0); assert.equal(one.forced_drops.dropped, null);
+  close(two.before.starter_total, 58, "roster 2 before"); close(two.depth_change, 1, "roster 2 gains VOR 1 on the bench");
+  assert.equal(two.after.filled_starter_slots, 4); assert.equal(two.after.active_count, 6);
+});
+
+test("2-for-1, 1-for-2 and 2-for-2 apply both sides simultaneously; uneven packages force explicit drops", () => {
+  const twoForOne = evaluated(base(), ["a_rb2", "a_wr2"], ["b_wr1"]);
+  assert.equal(twoForOne.status, "evaluated");
+  const receiver = sideOf(twoForOne, 2);
+  assert.equal(receiver.forced_drops.required, 1); assert.equal(receiver.forced_drops.status, "selected");
+  assert.deepEqual(receiver.forced_drops.dropped, ["b_wr3"], "keeps every starter and the most positive bench VOR");
+  assert.equal(receiver.forced_drops.evaluated_combinations, 7);
+  assert.deepEqual(receiver.forced_drops.candidates, ["a_rb2", "a_wr2", "b_qb", "b_rb", "b_te", "b_wr2", "b_wr3"]);
+  close(receiver.after.starter_total, 54, "QB 18 + RB 13 + WR 11 + FLEX 12"); assert.equal(receiver.after.active_count, 6);
+  assert.equal(sideOf(twoForOne, 1).forced_drops.status, "none"); assert.equal(sideOf(twoForOne, 1).after.active_count, 4);
+  // 1-for-2 from the first side's view: roster 2 sends one player and receives two.
+  const oneForTwo = evaluateTrade(base(), { sides: [{ roster_id: 2, sends: [{ type: "player", id: "b_wr1" }] },
+    { roster_id: 1, sends: [{ type: "player", id: "a_rb2" }, { type: "player", id: "a_wr2" }] }], horizon: "next_game" });
+  assert.deepEqual(validateTradeEvaluation(oneForTwo).violations, []);
+  assert.deepEqual(oneForTwo.sides, twoForOne.sides, "side order in the proposal does not change the result");
+  const twoForTwo = evaluated(base(), ["a_rb2", "a_wr2"], ["b_te", "b_wr3"]);
+  assert.equal(twoForTwo.status, "evaluated"); assert.ok(twoForTwo.sides.every(s => s.forced_drops.status === "none"));
+  assert.deepEqual(sideOf(twoForTwo, 1).receives, ["b_te", "b_wr3"]); assert.deepEqual(sideOf(twoForTwo, 2).receives, ["a_rb2", "a_wr2"]);
+});
+
+test("retained players move between starter and bench; depth change uses actual membership", () => {
+  const one = sideOf(evaluated(base(), ["a_wr1"], ["b_wr3"]), 1);
+  assert.deepEqual(one.before.bench, ["a_wr2"]);
+  assert.ok(one.after.lineup.some(s => s.player_id === "a_wr2"), "a_wr2 promoted to a starter");
+  assert.deepEqual(one.after.bench, ["b_wr3"]);
+  close(one.starter_change, -5, "WR 14 replaced by 9"); close(one.depth_change, -1, "a_wr2 leaves the bench, b_wr3 adds 0");
+});
+
+test("lineup input is canonicalized: roster order never changes lineups, benches or deltas", () => {
+  const tied = [sp("a_qb", ["QB"], 20, 20), sp("a_rb1", ["RB"], 15, 15), sp("a_rb2", ["RB"], 12, 12), sp("t_wr_b", ["WR"], 12, 10), sp("t_wr_a", ["WR"], 9, 10), sp("a_wr2", ["WR"], 9, 9)];
+  const forward = evaluated(built({ rosters: [tied, ROSTER_2] }), ["a_wr2"], ["b_wr3"]);
+  const reversed = evaluated(built({ rosters: [[...tied].reverse(), [...ROSTER_2].reverse()] }), ["a_wr2"], ["b_wr3"]);
+  assert.deepEqual(reversed, forward);
+  const bench = sideOf(forward, 1).before.bench;
+  assert.equal(bench.filter(id => id.startsWith("t_wr")).length, 1, "equal next_game values: one tied WR benched, the same one every run");
+});
+
+test("dual-position players fill one slot and count once at their best single VOR", () => {
+  const context = built({ rosters: [[sp("a_qb", ["QB"], 20, 20), sp("d_rbwr", ["RB", "WR"], 16, 16), sp("a_wr2", ["WR"], 9, 9)], ROSTER_2] });
+  assert.equal(context.values.d_rbwr.vor, 8); assert.equal(context.values.d_rbwr.vor_position, "RB");
+  const before = sideOf(evaluated(context, ["a_wr2"], ["b_wr3"]), 1).before;
+  assert.equal(before.lineup.filter(s => s.player_id === "d_rbwr").length, 1);
+  assert.equal(before.filled_starter_slots, 3, "one player cannot fill both RB and WR");
+  assert.equal(before.positions.RB.positive_vor_assets, 1); assert.equal(before.positions.WR.positive_vor_assets, 1, "d_rbwr counted once, at RB");
+});
+
+test("Superflex QB scarcity: structural QB protection from the helper, QB demand as context only", () => {
+  const positions = ["QB", "SUPER_FLEX", "WR", "BN"];
+  const sfLevels = { ...LEVELS, QB: { replacement_value: 10, eligible_starter_demand: 2 } };
+  const one = [sp("s_qb1", ["QB"], 20, 20), sp("s_qb2", ["QB"], 12, 12), sp("s_wr1", ["WR"], 14, 14), sp("s_wr2", ["WR"], 9, 9)];
+  const two = [sp("t_qb", ["QB"], 18, 18), sp("t_wr1", ["WR"], 15, 15), sp("t_wr2", ["WR"], 11, 11)];
+  const context = built({ rosters: [one, two], positions, levels: sfLevels });
+  assert.equal(context.league.scoring_profile.superflex, true);
+  assert.ok(context.protection.find(r => r.player_id === "s_qb2").reasons.includes("Structural Superflex QB asset"));
+  const side = sideOf(evaluated(context, ["s_wr2"], ["t_wr1", "t_wr2"]), 1);
+  assert.equal(side.forced_drops.required, 1); assert.deepEqual(side.forced_drops.dropped, ["t_wr2"]);
+  assert.ok(side.forced_drops.excluded.some(x => x.player_id === "s_qb2" && x.reasons.includes("Structural Superflex QB asset")), "Superflex QBs are never candidates");
+  assert.equal(side.before.positions.QB.eligible_starter_demand, 2); assert.equal(side.before.positions.QB.positive_vor_assets, 2);
+});
+
+test("TE premium enters only through league-scored values; the flex follows scored next_game values", () => {
+  const roster = tep => [sp("a_qb", ["QB"], 20, 20), sp("a_rb1", ["RB"], 15, 15), sp("a_wr1", ["WR"], 14, 14), sp("x_te", ["TE"], 9, tep ? 12 : 9), sp("x_wr", ["WR"], 10, 10)];
+  const standard = built({ rosters: [roster(false), ROSTER_2] }), premium = built({ rosters: [roster(true), ROSTER_2], scoring: { rec: 1, bonus_rec_te: 0.5 } });
+  assert.equal(standard.league.scoring_profile.te_premium, false); assert.equal(premium.league.scoring_profile.te_premium, true);
+  const flex = context => sideOf(evaluated(context, ["a_rb1"], ["b_rb"]), 1).before.lineup.find(s => s.slot === "FLEX").player_id;
+  assert.equal(flex(standard), "x_wr"); assert.equal(flex(premium), "x_te");
+});
+
+test("pickup_value is never trade value; no score, verdict, probability or Market Value; pure imports", async () => {
+  const inputs = tradeInputs({ rosters: [ROSTER_1, ROSTER_2] }), changed = structuredClone(inputs);
+  for (const c of Object.values(changed.valueSource.contexts)) c.model.pickup_value.central = -999;
+  const e = evaluateTradeFromInputs(inputs, offer(["a_rb2", "a_wr2"], ["b_wr1"]));
+  assert.deepEqual(evaluateTradeFromInputs(changed, offer(["a_rb2", "a_wr2"], ["b_wr1"])), e);
+  assert.deepEqual(validateTradeEvaluation(e).violations, []); assert.equal(e.market_value, null);
+  const json = JSON.stringify(e);
+  for (const key of FORBIDDEN_EVALUATION_KEYS) assert.ok(!json.includes(`"${key}"`), key);
+  for (const file of ["evaluate.js", "context.js"]) {
+    const source = await readFile(new URL(`../lib/trade/${file}`, import.meta.url), "utf8");
+    const imports = [...source.matchAll(/from "([^"]+)"/g)].map(m => m[1]);
+    assert.ok(imports.every(i => /^\.\/(contracts|context)\.js$|^\.\.\/decision\/(optimizer|team-strength|replacement|basis)\.js$|^\.\.\/normalize\/positions\.js$/.test(i)), `${file}: ${imports}`);
+    assert.doesNotMatch(source.replace(/\/\/.*$/gm, ""), /pickup_value|\bfetch\s*\(|process\.env|signals|market/);
+  }
+});
+
+test("forced drops: filled slots outrank raw starter total; canonical dropped-id order breaks ties", () => {
+  const plan = (context, k) => [{ placement: {}, reserve_keys: [], active: context.rosters[0].players, k }];
+  const filled = built({ rosters: [[sp("f_qb", ["QB"], 20, 20), sp("f_te", ["TE"], 8, -2), sp("f_wr", ["WR"], 12, 30), sp("f_qb2", ["QB"], 11, 11)], ROSTER_2], positions: ["QB", "TE", "BN"] });
+  const r = resolveForcedDrops(filled, plan(filled, 1));
+  assert.equal(r.status, "selected"); assert.deepEqual(r.selected.dropped, ["f_qb2"]);
+  assert.equal(r.selected.state.filled_starter_slots, 2);
+  close(r.selected.state.starter_total, 18, "full legal lineup containing the −2 TE ranks above dropping the TE (one slot empty, total 20)");
+  const tie = built({ rosters: [[sp("a_qb", ["QB"], 20, 20), sp("Zed", ["WR"], 7, 1), sp("abe", ["WR"], 7, 1), sp("a_wr1", ["WR"], 14, 14)], ROSTER_2], positions: ["QB", "WR", "BN"] });
+  const t = resolveForcedDrops(tie, plan(tie, 1));
+  assert.deepEqual(t.selected.dropped, ["Zed"], "UTF-16 code-unit order: 'Z' (0x5A) sorts before 'a' (0x61), unlike locale order");
+  assert.equal(t.evaluated_combinations, 4);
+  const state = bench => ({ filled_starter_slots: 2, starter_total: 34, bench, unknown_lineup_players: [] });
+  assert.deepEqual(compareCandidates(tie, { dropped: ["Zed"], reserve_keys: [], state: state(["abe"]) }, { dropped: ["abe"], reserve_keys: [], state: state(["Zed"]) }),
+    { order: -1, key: "dropped_ids" });
+});
+
+test("k > 2 is unsupported and never truncated; the package cap keeps k ≤ 2 through evaluateTrade", () => {
+  const context = base();
+  const r = resolveForcedDrops(context, [{ placement: {}, reserve_keys: [], active: context.rosters[1].players, k: 3 }]);
+  assert.equal(r.status, "unsupported"); assert.equal(r.required, 3); assert.equal(r.evaluated_combinations, 0); assert.equal(r.selected, null);
+  // Through the evaluator k = active_before − outgoing_active + incoming_active − capacity ≤ 2: sending a reserve player frees no active slot.
+  const sender = [...ROSTER_2.map(p => ({ ...p, id: `c_${p.id}` })), sp("c_ir", ["WR"], 5, 5, { reserve: true, injury: "IR" })];
+  const receiver = [...ROSTER_1.map(p => ({ ...p, id: `d_${p.id}` })), sp("d_x", ["WR"], 8, 8)];
+  const side = sideOf(evaluated(built({ rosters: [sender, receiver], settings: { reserve_slots: 1, taxi_slots: 0 } }), ["c_ir"], ["d_a_rb2", "d_a_wr2"]), 1);
+  assert.equal(side.forced_drops.required, 2); assert.equal(side.forced_drops.dropped.length, 2); assert.equal(side.forced_drops.evaluated_combinations, 28);
+});
+
+test("protected players are never dropped; blocked only when demonstrably not enough droppable players", () => {
+  const side = sideOf(evaluated(built({ rosters: [ROSTER_1, injure(ROSTER_2, ["b_te", "b_wr3", "b_wr2"])] }), ["a_rb2", "a_wr2"], ["b_wr1"]), 2);
+  assert.equal(side.forced_drops.status, "selected");
+  assert.ok(!["b_te", "b_wr3", "b_wr2"].includes(side.forced_drops.dropped[0]), "injured players are protected");
+  assert.deepEqual(side.forced_drops.excluded.map(x => x.player_id), ["b_te", "b_wr2", "b_wr3"]);
+  const blocked = evaluated(built({ rosters: [injure(ROSTER_1), injure(ROSTER_2)] }), ["a_rb2", "a_wr2"], ["b_wr1"]);
+  assert.equal(blocked.status, "blocked");
+  const b = sideOf(blocked, 2);
+  assert.equal(b.forced_drops.status, "blocked"); assert.equal(b.forced_drops.dropped, null); assert.equal(b.after, null);
+  assert.equal(b.starter_change, null); assert.equal(b.depth_change, null);
+  assert.equal(b.forced_drops.diagnostics[0].reason, "not_enough_droppable_players");
+  assert.deepEqual(blocked.errors.map(e => [e.code, e.roster_id]), [["FORCED_DROP_BLOCKED", "2"]]);
+  assert.ok(sideOf(blocked, 1).after, "the resolved side keeps its results as diagnostics");
+});
+
+test("insufficient protection evidence is undetermined, never assumed droppable, unless demonstrably blocked", () => {
+  const e = evaluated(built({ rosters: [ROSTER_1, ROSTER_2], omitEvidence: ["b_wr3"] }), ["a_rb2", "a_wr2"], ["b_wr1"]);
+  assert.equal(e.status, "withheld");
+  const side = sideOf(e, 2);
+  assert.equal(side.forced_drops.status, "undetermined"); assert.equal(side.forced_drops.dropped, null); assert.equal(side.after, null);
+  assert.deepEqual(side.forced_drops.excluded.map(x => [x.player_id, x.evidence, x.cause]), [["b_wr3", "insufficient", "no_record"]]);
+  assert.deepEqual(e.errors.map(x => [x.code, x.roster_id]), [["FORCED_DROP_UNDETERMINED", "2"]]);
+  // Every other active player protected: 0 droppable + 1 insufficient ≥ k = 1 ⇒ not demonstrably blocked.
+  const u = evaluated(built({ rosters: [injure(ROSTER_1), injure(ROSTER_2, ["b_qb", "b_rb", "b_wr1", "b_wr2", "b_te"])], omitEvidence: ["b_wr3"] }), ["a_rb2", "a_wr2"], ["b_wr1"]);
+  assert.equal(sideOf(u, 2).forced_drops.status, "undetermined"); assert.equal(u.status, "withheld");
+  // A single record with mismatched provenance is insufficient for that player only.
+  const context = base(); context.protection = context.protection.map(r => r.player_id === "b_te" ? { ...r, provenance: { ...r.provenance, week: 2 } } : r);
+  const m = sideOf(evaluated(context, ["a_rb2", "a_wr2"], ["b_wr1"]), 2);
+  assert.equal(m.forced_drops.status, "undetermined");
+  assert.ok(m.forced_drops.excluded.some(x => x.player_id === "b_te" && x.cause === "provenance_mismatch:week"));
+});
+
+test("unknown lineup-relevant next_game makes assignment, totals and bench undetermined; filled slots stay known", () => {
+  const unknown = ROSTER_1.map(p => p.id === "a_wr2" ? { ...p, start: null } : p);
+  const e = evaluated(built({ rosters: [unknown, ROSTER_2] }), ["a_rb2"], ["b_rb"]);
+  const side = sideOf(e, 1);
+  assert.equal(e.status, "evaluated", "no forced drop needed; unknowns are disclosed, not guessed");
+  for (const state of [side.before, side.after]) {
+    assert.equal(state.lineup, null); assert.equal(state.starter_total, null); assert.equal(state.bench, null); assert.equal(state.depth_total, null);
+    assert.equal(state.filled_starter_slots, 4);
+  }
+  assert.equal(side.starter_change, null); assert.equal(side.depth_change, null);
+  assert.ok(side.unknowns.some(u => u.field === "before.starter_total" && u.player_ids.includes("a_wr2")));
+  // An unknown value on a player who cannot play this week is not lineup-relevant.
+  const benchOnly = ROSTER_1.map(p => p.id === "a_wr2" ? { ...p, start: null, injury: "Out" } : p);
+  assert.notEqual(sideOf(evaluated(built({ rosters: [benchOnly, ROSTER_2] }), ["a_rb2"], ["b_rb"]), 1).before.starter_total, null);
+  // Unknowns that prevent ranking forced-drop candidates ⇒ undetermined, naming the key and players.
+  const receiver = ROSTER_2.map(p => p.id === "b_te" ? { ...p, start: null, positions: ["WR"] } : p);
+  const r = evaluated(built({ rosters: [ROSTER_1, receiver] }), ["a_rb2", "a_wr2"], ["b_wr1"]);
+  const d = sideOf(r, 2).forced_drops;
+  assert.equal(d.status, "undetermined"); assert.equal(r.status, "withheld");
+  assert.ok(d.diagnostics.some(x => x.reason === "ranking_undetermined" && x.key === "starter_total" && x.player_ids.includes("b_te")));
+});
+
+test("depth: same-player unknown VOR cancels only on the bench in both states; absolute total stays null", () => {
+  const context = built({ rosters: [[...ROSTER_1, sp("m_wr", ["WR"], null, null, { injury: "Out" })], ROSTER_2] });
+  const kept = sideOf(evaluated(context, ["a_wr2"], ["b_wr3"]), 1);
+  assert.ok(kept.before.bench.includes("m_wr") && kept.after.bench.includes("m_wr"));
+  assert.equal(kept.before.depth_total, null); assert.equal(kept.after.depth_total, null);
+  close(kept.depth_change, -1, "m_wr cancels; a_wr2 (1) out, b_wr3 (0) in");
+  const traded = sideOf(evaluated(context, ["m_wr"], ["b_wr3"]), 1);
+  assert.equal(traded.depth_change, null, "the unknown player leaves the bench: no cancellation");
+  assert.ok(traded.unknowns.some(u => u.field === "depth_change" && u.player_ids.includes("m_wr")));
+  assert.equal(traded.before.depth_total, null); assert.notEqual(traded.after.depth_total, null);
+});
+
+test("reserve placement only when slot, eligibility and capability are verified; otherwise active capacity", () => {
+  const incoming = [sp("b_inj", ["WR"], 7, 7, { injury: "IR" }), ...ROSTER_2.filter(p => p.id !== "b_wr3")];
+  const full = [...ROSTER_1, sp("a_x", ["WR"], 10, 10)];
+  const eligible = { b_inj: { reserve: "verified", taxi: "unknown" } };
+  const run = options => evaluated(built({ rosters: [full, incoming], settings: { reserve_slots: 1, taxi_slots: 0 }, ...options }), ["a_wr2"], ["b_inj", "b_te"]);
+  const verified = sideOf(run({ placement: eligible }), 1);
+  assert.equal(verified.reserve_placement.find(p => p.player_id === "b_inj").placement, "reserve");
+  assert.equal(verified.forced_drops.status, "none"); assert.equal(verified.after.active_count, 6);
+  for (const [label, options, limit] of [
+    ["eligibility unknown (injury status alone never places a player)", {}, "reserve eligibility unverified"],
+    ["capability missing", { placement: eligible, capabilities: {} }, "IR capability unavailable"],
+    ["slot count unverified", { placement: eligible, settings: {} }, "reserve slot capacity unverified"],
+  ]) {
+    const e = run(options), side = sideOf(e, 1), placed = side.reserve_placement.find(p => p.player_id === "b_inj");
+    assert.equal(placed.placement, "active", label); assert.ok(placed.limitations.includes(limit), label);
+    assert.equal(side.forced_drops.required, 1, `${label}: counts against active capacity`);
+    assert.ok(side.warnings.some(w => w.includes("b_inj")), label); assert.equal(e.legality, "conditional_known_rules");
+  }
+});
+
+test("two incoming players competing for one verified reserve slot are allocated jointly, never sharing it", () => {
+  const incoming = [sp("b_inj1", ["WR"], 7, 7, { injury: "IR" }), sp("b_inj2", ["WR"], 7, 7, { injury: "IR" }), ...ROSTER_2.slice(0, 4)];
+  const placement = { b_inj1: { reserve: "verified", taxi: "unknown" }, b_inj2: { reserve: "verified", taxi: "unknown" } };
+  const context = built({ rosters: [[...ROSTER_1, sp("a_x", ["WR"], 10, 10)], incoming], settings: { reserve_slots: 1, taxi_slots: 0 }, placement });
+  const roster = context.rosters[0], arriving = context.rosters[1].players.filter(p => p.player_id.startsWith("b_inj"));
+  const { allocations } = reserveAllocations(context, roster, arriving, roster.players.filter(p => p.player_id === "a_wr2"));
+  assert.deepEqual(allocations.map(a => a.placement),
+    [{ b_inj1: "active", b_inj2: "active" }, { b_inj1: "active", b_inj2: "reserve" }, { b_inj1: "reserve", b_inj2: "active" }], "never both in one slot");
+  const side = sideOf(evaluated(context, ["a_wr2"], ["b_inj1", "b_inj2"]), 1);
+  assert.deepEqual(side.reserve_placement.map(p => [p.player_id, p.placement]), [["b_inj1", "reserve"], ["b_inj2", "active"]], "canonical reserve-placement tiebreak");
+  assert.equal(side.forced_drops.status, "none"); assert.equal(side.after.active_count, 6);
+  assert.equal(side.forced_drops.evaluated_combinations, 7, "5 all-active drop combinations + 2 single-reserve allocations");
+});
+
+test("over capacity before the trade is withheld; malformed and unsupported proposals stay unvalued", () => {
+  const e = evaluated(built({ rosters: [ROSTER_1, [...ROSTER_2, sp("b_extra", ["WR"], 6, 6)]] }), ["a_wr2"], ["b_wr3"]);
+  assert.equal(e.status, "withheld"); assert.deepEqual(e.errors.map(x => [x.code, x.roster_id]), [["OVER_CAPACITY_BEFORE", "2"]]);
+  assert.equal(sideOf(e, 2).after, null); assert.equal(sideOf(e, 2).starter_change, null);
+  const context = base();
+  for (const [proposal, status] of [[offer(["a_wr2"], ["b_wr3"], "rest_of_season"), "unsupported"], [offer(["a_wr2", "a_wr1", "a_rb1"], ["b_wr3"]), "unsupported"],
+    [offer(["b_wr3"], ["a_wr2"]), "invalid"], [offer([], ["b_wr3"]), "unsupported"], [{ ...offer(["a_wr2"], ["b_wr3"]), score: 1 }, "invalid"]]) {
+    const result = evaluateTrade(context, proposal);
+    assert.equal(result.status, status); assert.deepEqual(result.sides, []); assert.deepEqual(validateTradeEvaluation(result).violations, []);
+  }
+  const picks = offer(["a_wr2"], ["b_wr3"]); picks.sides[1].sends.push({ type: "draft_pick", id: "2027-1" });
+  assert.deepEqual(evaluateTrade(context, picks).errors.map(x => x.code), ["UNSUPPORTED_ASSET"]);
+  const invalid = evaluateTrade({ ...context, versions: null }, offer(["a_wr2"], ["b_wr3"]));
+  assert.equal(invalid.status, "invalid"); assert.deepEqual(invalid.sides, []);
+});
+
+test("a relevant game already kicked off withholds starter change (lock unverified); totals stay reported", () => {
+  const started = ROSTER_1.map(p => p.id === "a_qb" ? { ...p, context: { schedule: "kickoff_passed" } } : p);
+  const side = sideOf(evaluated(built({ rosters: [started, ROSTER_2] }), ["a_wr2"], ["b_wr3"]), 1);
+  assert.equal(side.starter_change, null); assert.notEqual(side.after.starter_total, null);
+  assert.ok(side.unknowns.some(u => u.field === "starter_change" && u.player_ids.includes("a_qb")));
 });
