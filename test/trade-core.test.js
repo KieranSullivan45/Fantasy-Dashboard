@@ -672,8 +672,12 @@ test("two incoming players competing for one verified reserve slot are allocated
 
 test("over capacity before the trade is withheld; malformed and unsupported proposals stay unvalued", () => {
   const e = evaluated(built({ rosters: [ROSTER_1, [...ROSTER_2, sp("b_extra", ["WR"], 6, 6)]] }), ["a_wr2"], ["b_wr3"]);
-  assert.equal(e.status, "withheld"); assert.deepEqual(e.errors.map(x => [x.code, x.roster_id]), [["OVER_CAPACITY_BEFORE", "2"]]);
-  assert.equal(sideOf(e, 2).after, null); assert.equal(sideOf(e, 2).starter_change, null);
+  assert.equal(e.status, "withheld");
+  assert.deepEqual(e.errors.map(x => [x.code, x.roster_id]), [["FORCED_DROP_UNDETERMINED", "2"], ["OVER_CAPACITY_BEFORE", "2"]]);
+  const crowded = sideOf(e, 2).forced_drops;
+  assert.equal(crowded.status, "undetermined", "unresolved, never null, selected or blocked (V04-02-F01)");
+  assert.equal(crowded.dropped, null); assert.equal(crowded.diagnostics[0].reason, "over_capacity_before");
+  assert.equal(sideOf(e, 2).after, null); assert.equal(sideOf(e, 2).starter_change, null); assert.equal(sideOf(e, 2).depth_change, null);
   const context = base();
   for (const [proposal, status] of [[offer(["a_wr2"], ["b_wr3"], "rest_of_season"), "unsupported"], [offer(["a_wr2", "a_wr1", "a_rb1"], ["b_wr3"]), "unsupported"],
     [offer(["b_wr3"], ["a_wr2"]), "invalid"], [offer([], ["b_wr3"]), "unsupported"], [{ ...offer(["a_wr2"], ["b_wr3"]), score: 1 }, "invalid"]]) {
