@@ -8,7 +8,9 @@ import { decisionBasis } from "../../lib/decision/basis.js";
 import AccountManager from "../components/AccountManager.js";
 const Context = createContext(null);
 export const useDashboard = () => useContext(Context);
-export const destinations = ["Home", "Waivers", "Lineup", "Signals", "League", "Players", "More"];
+export const destinations = ["Home", "Waivers", "Lineup", "Signals", "Trade", "League", "Players", "More"];
+/** Reached from More on mobile, so the bottom bar keeps five destinations at 320px. */
+const moreSections = ["Trade", "League", "Players"];
 export function useViewState(key, initial) {
   const { views, setViews } = useDashboard();
   return [views[key] ?? initial, value => setViews(previous => ({ ...previous, [key]: typeof value === "function" ? value(previous[key] ?? initial) : value }))];
@@ -37,8 +39,8 @@ export default function DashboardShell({ children }) {
   useEffect(() => { if (selection.leagueId) loader.load(selection.leagueId, selection); return () => loader.cancel(); }, [activeKey, loader]);
   useEffect(() => { if (data) decisionLoader.load(data); return () => decisionLoader.cancel(); }, [data, decisionLoader]);
   useEffect(() => { if (previousPath.current !== pathname) main.current?.focus({ preventScroll: true }); previousPath.current = pathname; }, [pathname]);
-  const nav = mobile => <nav aria-label={mobile ? "Mobile navigation" : "Desktop navigation"} className={mobile ? "mobileNav" : "desktopNav"}>{destinations.filter(name => !mobile || !["League", "Players"].includes(name)).map(name => {
-    const path = `/dashboard/${name.toLowerCase()}`, current = pathname === path, secondary = mobile && name === "More" && ["/dashboard/league", "/dashboard/players"].includes(pathname);
+  const nav = mobile => <nav aria-label={mobile ? "Mobile navigation" : "Desktop navigation"} className={mobile ? "mobileNav" : "desktopNav"}>{destinations.filter(name => !mobile || !moreSections.includes(name)).map(name => {
+    const path = `/dashboard/${name.toLowerCase()}`, current = pathname === path, secondary = mobile && name === "More" && moreSections.some(section => pathname === `/dashboard/${section.toLowerCase()}`);
     return <Link key={name} href={path} prefetch={false} aria-current={current ? "page" : undefined} className={current || secondary ? "active" : ""}>{name}{secondary ? <span className="srOnly"> — current section in More</span> : null}</Link>;
   })}</nav>;
   const query = new URLSearchParams({ league: selection.leagueId, user: selection.userId || "spectator", ...(selection.rosterId ? { roster: String(selection.rosterId) } : {}) }).toString();
