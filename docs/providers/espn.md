@@ -30,7 +30,8 @@ Flaim (an MCP service holding the user's ESPN session on its side) was verified 
 - Player slots are translated labels. Only the nine observed labels map (QB, RB, WR, TE, FLEX, K, D/ST, Bench, IR); anything else is an unsupported slot that blocks lineup and decision evaluation.
 - IR comes from the slot, never from injury status.
 - Eligibility keeps QB/RB/WR/TE/K/DEF. Flex groupings and "Rookie" are ignored, and unverified IDP labels are ignored with a warning.
-- The transport exposes no scoring coefficients, owners, waiver priority or FAAB. Scoring-dependent analysis (decision support, Pickup Rating, trades) is refused with `UNSUPPORTED_FEATURE`.
+- The transport exposes no scoring coefficients, owners, waiver priority or FAAB. Without an authorized scoring configuration, scoring-dependent analysis is refused with `UNSUPPORTED_FEATURE`.
+- An authorized scoring configuration (ADR 0003) transcribes the League Info scoring screen for one league and season, and custom values are kept exactly. It enables league-scored production, start values and legal lineups. It never enables Pickup Rating, add/drop, replacement levels or trades, which need a complete available pool. Team D/ST scoring and a few rare per-player rules stay unsupported.
 - Available players are a capped subset (never a complete pool) with free-agent/waiver state and waiver clear time. ESPN-wide rostered and started rates are discarded.
 - Undecided matchup totals are withheld.
 - Transactions are a bounded, possibly truncated window. The manager's pending claims and proposals are private and withheld from the snapshot. FAAB bids stay unknown.

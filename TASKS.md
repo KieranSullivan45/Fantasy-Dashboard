@@ -96,8 +96,21 @@ Status values: `proposed` · `ready` · `in-progress` · `in-review` · `blocked
 - Handoff notes: —
 - Blockers: V04-01.
 
+### V05-ESPN-02 — Authorized ESPN scoring configuration
+- Status: in-review (not pushed; awaiting owner review)
+- Owner: Claude Code
+- Reviewer: repository owner / ChatGPT
+- Branch: `feat/v05-espn-02-authorized-scoring`, created from `origin/main` at `69e2b80` (V05-FLAIM-01 merge)
+- Dependencies: V05-FLAIM-01 merged; ADR 0002.
+- Allowed scope (owner task prompt of 2026-09-26): a provider-independent authorized ESPN scoring configuration, its application at the ESPN facts/provider boundary, per-engine gating for incomplete pools, synthetic fixtures/tests, ADR 0003, provider docs, this entry. Not in scope: OAuth, Flaim network transport, database, UI scoring editor, dependencies, committing the owner's league-bound config, D/ST or return-TD stat sources, recalibration.
+- Acceptance criteria: config bound to provider/league/season/schema with `scoring_source: "user_authorized"`; mismatches, conflicts and incomplete configs fail closed; exact mapping onto existing rules only, the rest explicitly unsupported; custom values preserved; availability reflects coverage; Pickup Rating, add/drop, replacement levels and trades stay disabled with an incomplete pool; Sleeper unchanged; `pnpm test`, `pnpm build`, `pnpm test:ui` and `git diff --check` pass.
+- Handoff notes: new `lib/providers/espn-scoring.js` (`validateEspnScoringConfig`, `translateAuthorizedEspnScoring`, `applyAuthorizedEspnScoring`, `createEspnScoringResolver`, `bandPoints`). `ESPNProvider` takes `scoringConfig`/`resolveScoringConfig` and adds the `decisionSupport`, `pickupRating` and `tradeAnalysis` capabilities for injected facts. The snapshot builder accepts pre-translated authorized rules and adds `coverage.scoring_source`, `scoring_status` and `scoring_binding`. `buildDecisionState` withholds pool-dependent sections when `coverage.available_players.complete === false`, and `/api/trade` refuses such states. Import facts gain `scoring.source: "league_settings"` (additive).
+- Files: new `lib/providers/espn-scoring.js`, `test/espn-authorized-scoring.test.js`, `test/fixtures/espn-scoring/synthetic-authorized-scoring.json`, `docs/decisions/0003-espn-authorized-scoring.md`. Modified `lib/providers/espn.js`, `lib/providers/espn-normalize.js`, `lib/providers/types.d.ts`, `lib/decision/build-context.js`, `lib/trade-api.js`, `ARCHITECTURE.md`, `docs/providers.md`, `docs/providers/espn.md`, this file.
+- Tests: `pnpm test` 272 pass / 0 fail (261 before + 11 new; existing tests unmodified). `pnpm build` succeeded (15/15 pages). `pnpm test:ui` 34 passed (run with `PLAYWRIGHT_CHANNEL=chrome`). `git diff --check` clean.
+- Blockers / next: ESPN `nfl_state.season_type` stays null, so current-season statistics do not load until an NFL season-state source is verified. Owner config delivery, live transport and route enablement need separate approval.
+
 ### V05-FLAIM-01 — ESPN facts via Flaim: offline mapping layer
-- Status: in-review (branch pushed only when the owner asks; not merged)
+- Status: done (merged to `main` via PR #6 as `69e2b80`)
 - Owner: Claude Code
 - Reviewer: repository owner / ChatGPT
 - Branch: `feat/v05-flaim-01-espn-facts-map`, created from `origin/main` at `cd0b3be`
