@@ -96,6 +96,19 @@ Status values: `proposed` · `ready` · `in-progress` · `in-review` · `blocked
 - Handoff notes: —
 - Blockers: V04-01.
 
+### V05-FLAIM-01 — ESPN facts via Flaim: offline mapping layer
+- Status: in-review (branch pushed only when the owner asks; not merged)
+- Owner: Claude Code
+- Reviewer: repository owner / ChatGPT
+- Branch: `feat/v05-flaim-01-espn-facts-map`, created from `origin/main` at `cd0b3be`
+- Dependencies: owner-approved ESPN/Flaim architecture of 2026-09-26 (ADR 0002). The live verification report is in the owner conversation; no private league data is committed.
+- Allowed scope (owner task prompt of 2026-09-26): offline Flaim → ESPN facts mapping, ESPN provider/normalizer changes needed to consume it, scoring gating, synthetic fixtures/tests, ADR 0002, provider docs, this entry. Not in scope: live network transport, OAuth, Vercel auth, UI, dependencies, persistence, public/chat exposure, archive capture, D/ST identity rules.
+- Acceptance criteria: provider stays `espn` with Flaim as provenance only; no Flaim→snapshot function; scoring-dependent engines refuse missing scoring; incomplete pool never claimed complete; private pending items withheld; exact identity only; discarded fields never copied; synthetic fixtures only; Sleeper unchanged; `pnpm test`, `pnpm build` and `pnpm test:ui` pass.
+- Handoff notes: see the task report. The internal contract `espn-facts-1` has two mappers (`espnFactsFromImport`, `espnFactsFromFlaim`) and one builder (`snapshotFromEspnFacts`). `normalizeEspn` = builder(import mapper); its output is unchanged except additive `capabilities.scoringRules`, `coverage.scoring_available` and `coverage.source_transport` (checked against the previous normalizer), and it now also records unknown per-entry slots as unsupported. The scoring gate sits in `ESPNProvider.getDecisionContext` and `buildDecisionState`. `/api/decision-support` returns `ProviderError`s as normalized 422 `no-store` responses (previously a generic 502), like `/api/trade`.
+- Files: new `lib/providers/flaim/espn-map.js`, `lib/providers/flaim/schema.js`, `test/flaim-espn-map.test.js`, `test/fixtures/flaim-espn/synthetic-league.json`, `docs/decisions/0002-espn-via-flaim.md`. Modified `lib/providers/espn-normalize.js`, `lib/providers/espn.js`, `lib/providers/types.d.ts`, `lib/decision/build-context.js`, `lib/decision-api.js`, `ARCHITECTURE.md`, `docs/providers.md`, `docs/providers/espn.md`, this file.
+- Tests: `pnpm test` 261 pass / 0 fail (245 before + 16 new; existing tests unmodified). `pnpm build` succeeded (15/15 pages). `pnpm test:ui` 34 passed / 0 failed (run with `PLAYWRIGHT_CHANNEL=chrome`, as for V04-04).
+- Blockers / next: a live Flaim transport and OAuth need separate approval. Production OAuth is blocked pending Flaim's permission and redirect-URI support.
+
 ### V04-04 — Trade Analyzer delivery
 - Status: in-review (PR open against `main`; not merged)
 - Owner: Claude Code
