@@ -96,8 +96,21 @@ Status values: `proposed` · `ready` · `in-progress` · `in-review` · `blocked
 - Handoff notes: —
 - Blockers: V04-01.
 
+### V05-ESPN-03 — Verified NFL season state for ESPN leagues
+- Status: in-review (awaiting owner review)
+- Owner: Claude Code
+- Reviewer: repository owner / ChatGPT
+- Branch: `feat/v05-espn-03-nfl-season-state`, created from `origin/main` at `281ad86` (V05-ESPN-02 merge)
+- Dependencies: V05-ESPN-02 merged; ADR 0002, 0003.
+- Allowed scope (owner task prompt of 2026-09-26): verify NFL season type/week for ESPN leagues from the existing nflverse schedule source, cross-checked with the ESPN scoring period, failing closed; tests; ADR 0004; docs; this entry. Not in scope: new transport, auth, dependencies, UI, real league config wiring (V05-ESPN-04).
+- Acceptance criteria: `season_type`/`week` populated only when verified; the fantasy phase is never used; mismatch, unknown and off-season states stay null with a warning and no current-season statistics; Sleeper and ESPN offline imports unchanged; `pnpm test`, `pnpm build` and `git diff --check` pass.
+- Handoff notes: new pure `lib/decision/season-state.js` (`verifyNflSeasonState`, `withNflSeasonState`). The ESPN snapshot builder adds the `coverage.nfl_state_verification: "required"` marker only for facts with a verified current season (live session). `buildDecisionState` runs verification only for that marker, loading the schedule once and reusing it; the result is in `coverage.nfl_state_verification`. No API, route or UI change.
+- Files: new `lib/decision/season-state.js`, `test/nfl-season-state.test.js`, `docs/decisions/0004-espn-nfl-season-state.md`. Modified `lib/decision/build-context.js`, `lib/providers/espn-normalize.js`, `ARCHITECTURE.md`, `docs/providers/espn.md`, this file.
+- Tests: `pnpm test` 279 pass / 0 fail (272 before + 7 new; existing tests unmodified). `pnpm build` succeeded (15/15 pages). `pnpm test:ui` 34 passed (run with `PLAYWRIGHT_CHANNEL=chrome`; the decision loader changed). `git diff --check` clean.
+- Blockers / next: the owner's league-bound scoring config is still not wired in (V05-ESPN-04, needs approval), and there is no live Flaim transport, so ESPN routes stay closed.
+
 ### V05-ESPN-02 — Authorized ESPN scoring configuration
-- Status: in-review (not pushed; awaiting owner review)
+- Status: done (merged to `main` via PR #7 as `281ad86`)
 - Owner: Claude Code
 - Reviewer: repository owner / ChatGPT
 - Branch: `feat/v05-espn-02-authorized-scoring`, created from `origin/main` at `69e2b80` (V05-FLAIM-01 merge)
