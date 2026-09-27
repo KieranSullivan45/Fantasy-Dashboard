@@ -23,8 +23,7 @@ Flaim OAuth for a custom client needs confirmation from Flaim first (owner decis
 1. **Local private mode, single user, local machine only.** It is enabled only when all of these hold:
    - `FANTASY_PRIVATE_MODE=local`;
    - `ESPN_PRIVATE_CONFIG` names an absolute path;
-   - `VERCEL` is unset.
-
+   - `VERCEL` is unset;
    - a valid per-process loopback token (`FANTASY_LOOPBACK_TOKEN`) set by the private launcher.
 
    `pnpm dev:private` (`scripts/dev-private.js`) runs Next through a Node HTTP server that listens on `127.0.0.1` only. It generates a fresh token per launch, and plain `next dev`/`next start` never enable private mode. Production is unsupported.
@@ -75,6 +74,7 @@ Flaim OAuth for a custom client needs confirmation from Flaim first (owner decis
 ## Consequences
 
 - The owner can load their league locally through the API routes with real authorized scoring. Dashboard rendering of ESPN needs the UI task (V05-ESPN-07).
-- Data freshness depends on recapturing the bundle. Live transport (V05-ESPN-05) and OAuth (V05-ESPN-06, after Flaim confirms permission) are separate, approved tasks.
+- The first real load (private config plus a captured bundle) is the separate, owner-approved First Real ESPN Load / Activation Validation milestone; it validates this mode and is not V05-ESPN-05.
+- Data freshness depends on recapturing the bundle. Live Flaim transport (V05-ESPN-05) and OAuth (V05-ESPN-06, after Flaim confirms permission) are separate, approved tasks.
 - Waivers, Pickup Rating, add/drop, replacement levels, VOR and trades stay disabled until a complete pool exists. Pool completeness fails closed: any non-Sleeper snapshot must prove `available_players.complete === true`, and a bundle without available players reports an incomplete, empty pool.
 - **Supersedes part of ADR 0003:** ADR 0003 (decision 5) said the authorized raw import was unaffected by pool gating because it carries no incomplete-subset marker. Under the fail-closed rule above, ESPN offline-import decisions also withhold replacement levels, VOR, need/surplus, add/drop and Pickup Rating. Before, their replacement levels were computed from rostered players only. The import path is not served by any route, and ADR 0003 is otherwise unchanged.

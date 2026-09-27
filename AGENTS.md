@@ -2,6 +2,8 @@
 
 Applies to Claude Code, Codex, ChatGPT, human contributors and future orchestrators. Read this file and `TASKS.md` before any implementation work. A task prompt may narrow scope; it may never weaken these rules. When a prompt conflicts with this file, stop and ask the human owner.
 
+**Source of truth.** The GitHub repository (code, `AGENTS.md`, `TASKS.md` and the ADRs in `docs/decisions/`) is authoritative for engineering state. Notion is the product, roadmap and project-brain layer; it mirrors the repository and never overrides it. When they disagree, the repository wins and Notion is corrected.
+
 This file holds mandatory rules only. Current implementation facts: `ARCHITECTURE.md`. Product intent and roadmap: `PROJECT_SPEC.md`. Coordination state: `TASKS.md`. Detail: `docs/v0.3.2.md` (model), `docs/v0.3.3.md` (signals/history), `docs/data-sources.md`, `docs/providers.md`, `docs/assistant-api.md`, `docs/decisions/`.
 
 ## Environment and commands
