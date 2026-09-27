@@ -2,13 +2,19 @@
 // listens on 127.0.0.1 only and proves loopback per connection (lib/private/loopback.js). Never used in production.
 import { createServer } from "node:http";
 import next from "next";
-import { TOKEN_ENV, newLoopbackToken, tagLoopbackRequest, isLoopbackAddress } from "../lib/private/loopback.js";
+import { TOKEN_ENV, newLoopbackToken, tagLoopbackRequest, isLoopbackAddress, redactRequestLog } from "../lib/private/loopback.js";
 
 if (process.env.VERCEL) throw new Error("Local private mode never runs on Vercel.");
 const hostname = "127.0.0.1", port = Number(process.env.PORT || 3000);
 if (!Number.isSafeInteger(port) || port < 1 || port > 65535) throw new Error("PORT must be a valid port.");
 // A fresh token per launch; it overrides any value from the environment or .env files and is never sent to clients.
 process.env[TOKEN_ENV] = newLoopbackToken();
+// Next dev logs every request URL (private league ids travel in query strings) and a custom server cannot switch that off
+// without a project next.config, so this process redacts query strings from its own log output instead.
+for (const stream of [process.stdout, process.stderr]) {
+  const write = stream.write.bind(stream);
+  stream.write = (chunk, ...rest) => write(typeof chunk === "string" || Buffer.isBuffer(chunk) ? redactRequestLog(chunk.toString()) : chunk, ...rest);
+}
 const app = next({ dev: true, hostname, port });
 const handle = app.getRequestHandler();
 await app.prepare();

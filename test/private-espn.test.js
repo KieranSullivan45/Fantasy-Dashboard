@@ -1,12 +1,12 @@
 // V05-ESPN-04: local private ESPN mode over a SYNTHETIC saved Flaim bundle (temp files outside the repo; no network).
 import test from "node:test";
 import assert from "node:assert/strict";
-import {readFileSync,writeFileSync,mkdtempSync,mkdirSync,rmSync} from "node:fs";
+import {readFileSync,writeFileSync,mkdtempSync,mkdirSync,rmSync,statSync,utimesSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {privateModeEnabled,loadPrivateConfig,outsideRepository,validatePrivateConfig} from "../lib/private/config.js";
 import {privateRequest,privateIdentity} from "../lib/private/guard.js";
-import {LOOPBACK_HEADER,TOKEN_ENV,tagLoopbackRequest,isLoopbackAddress,loopbackProofMatches} from "../lib/private/loopback.js";
+import {LOOPBACK_HEADER,TOKEN_ENV,tagLoopbackRequest,isLoopbackAddress,loopbackProofMatches,redactRequestLog} from "../lib/private/loopback.js";
 import {createDecisionService} from "../lib/decision-service.js";
 import {readSavedFlaimBundle,espnFactsFromSavedBundle} from "../lib/providers/flaim/bundle-file.js";
 import {createPrivateEspnProvider} from "../lib/providers/flaim/private-source.js";
@@ -250,9 +250,14 @@ test("regression: missing available players fail closed; no replacement values a
   assert.ok(Object.values(state.contexts).every(c=>c.model.replacement.value_over_replacement===null));
   assert.ok(state.decision.team_strength_v2.every(t=>Object.values(t.positions).every(x=>x.need_or_surplus===null)));
   assert.equal(state.decision.waivers.status,"unsupported");assert.equal(state.decision.coverage.available_pool_complete,false);
-  const trade=await handleTradeRequest(new Request(`${BASE}/api/trade`,{method:"POST",headers:{host:"127.0.0.1:3000","content-type":"application/json",[LOOPBACK_HEADER]:TOKEN},
-   body:JSON.stringify({provider:"espn",league:LEAGUE,proposal:proposal(["nfl:00-9900000"],["nfl:00-9900006"])})}),{build:async()=>state});
-  assert.equal(trade.status,422);assert.equal((await trade.json()).code,"UNSUPPORTED_FEATURE");
+  await withPrivateMode(f,async()=>{
+   let built=0;
+   const trade=await handleTradeRequest(new Request(`${BASE}/api/trade`,{method:"POST",headers:{host:"127.0.0.1:3000","content-type":"application/json",[LOOPBACK_HEADER]:TOKEN},
+    body:JSON.stringify({provider:"espn",league:LEAGUE,proposal:proposal(["nfl:00-9900000"],["nfl:00-9900006"])})}),{build:async(league,o)=>{built++;assert.ok(o.providerAdapter&&o.revision);return state;}});
+   assert.equal(built,1,"the private path loaded decision state, so the refusal comes from the pool gate");
+   assert.equal(trade.status,422);assert.equal(trade.headers.get("cache-control"),"private, no-store");
+   const body=await trade.json();assert.equal(body.code,"UNSUPPORTED_FEATURE");assert.match(body.error,/complete available-player pool/);
+  });
   // Unproven completeness is incomplete for any non-Sleeper snapshot, even without an available_players record.
   const {coverage,...rest}=s,bare={...rest,coverage:{...coverage,available_players:undefined}};
   const bareState=await buildDecisionState(LEAGUE,{...fixture,provider:"espn",loadLeague:async()=>bare,providerAdapter:p});
@@ -302,4 +307,61 @@ test("private decision responses are private, no-store in every outcome, through
   // The same league id through the public Sleeper path is a different cache entry (provider and principal in the key).
   const before=builds;await service(LEAGUE,{provider:"sleeper",identity:{userId:null,rosterId:null,season:null}}).catch(()=>null);assert.equal(builds,before+1);
  });}finally{f.cleanup();}
+});
+
+test("regression: the private decision cache follows current inputs and never serves stale or invalid-config results",async()=>{
+ const f=privateFolder();
+ try{await withPrivateMode(f,async()=>{
+  let builds=0;const service=createDecisionService(async(league,o)=>{builds++;return offlineBuild(league,o);});
+  const build=(league,o)=>service(league,o).then(state=>state.decision);
+  const get=()=>handleDecisionRequest(local(`/api/decision-support?provider=espn&league=${LEAGUE}`),{build});
+  const rec=async response=>{assert.equal(response.status,200);assert.equal(response.headers.get("cache-control"),"private, no-store");return (await response.json()).league.scoring_settings.rec;};
+  assert.equal(await rec(await get()),0.5);assert.equal(await rec(await get()),0.5);assert.equal(builds,1,"warm cache");
+  writeFileSync(f.configPath,JSON.stringify(CONFIG(c=>{c.scoring.offense.reception=1.5;})));
+  assert.equal(await rec(await get()),1.5,"changed scoring is rebuilt, not served from cache");assert.equal(builds,2);
+  writeFileSync(f.configPath,JSON.stringify(CONFIG(c=>{delete c.scoring.offense.reception;})));
+  const invalid=await get();assert.notEqual(invalid.status,200,"an invalid current config never returns the cached decision");
+  assert.equal(invalid.headers.get("cache-control"),"private, no-store");assert.equal((await invalid.json()).code,"INVALID_SCORING_CONFIG");assert.equal(builds,2);
+  const trade=await handleTradeRequest(new Request(`${BASE}/api/trade`,{method:"POST",headers:{host:"127.0.0.1:3000","content-type":"application/json",[LOOPBACK_HEADER]:TOKEN},
+   body:JSON.stringify({provider:"espn",league:LEAGUE,proposal:proposal(["nfl:00-9900000"],["nfl:00-9900006"])})}),{build:service});
+  assert.equal(trade.status,422);assert.equal((await trade.json()).code,"INVALID_SCORING_CONFIG");
+  writeFileSync(f.configPath,JSON.stringify(CONFIG(c=>{c.scoring.offense.reception=1.5;})));
+  assert.equal(await rec(await get()),1.5);assert.equal(builds,2,"identical inputs reuse the cached decision");
+  const bundle=structuredClone(BUNDLE);bundle.leagueInfo.data.name="Synthetic League Renamed";writeFileSync(join(f.dir,"bundle.json"),JSON.stringify(bundle));
+  const renamed=await get();assert.equal(renamed.status,200);assert.equal((await renamed.json()).league.name,"Synthetic League Renamed");assert.equal(builds,3,"a changed bundle is rebuilt");
+ });}finally{f.cleanup();}
+});
+
+test("regression: private file caches follow content, not size or modification time",()=>{
+ const f=privateFolder();
+ try{
+  const keep=path=>{const {atime,mtime,size}=statSync(path);return ()=>{utimesSync(path,atime,mtime);const after=statSync(path);assert.equal(after.size,size);assert.equal(after.mtimeMs,mtime.getTime());};};
+  writeFileSync(f.configPath,JSON.stringify(CONFIG(c=>{c.scoring.offense.reception=0.5;})));
+  assert.equal(loadPrivateConfig({env:f.env}).scoring.offense.reception,0.5);
+  const restore=keep(f.configPath);writeFileSync(f.configPath,JSON.stringify(CONFIG(c=>{c.scoring.offense.reception=1.5;})));restore();
+  const reloaded=loadPrivateConfig({env:f.env});assert.equal(reloaded.scoring.offense.reception,1.5,"same size and mtime, new content");assert.match(reloaded.revision,/^[0-9a-f]{64}$/);
+  const bundlePath=join(f.dir,"bundle.json");assert.equal(readSavedFlaimBundle(bundlePath).facts.league.name,"Synthetic League");
+  const same=structuredClone(BUNDLE);same.leagueInfo.data.name="Synthetic Leagu3";const restoreBundle=keep(bundlePath);writeFileSync(bundlePath,JSON.stringify(same));restoreBundle();
+  const next=readSavedFlaimBundle(bundlePath);assert.equal(next.facts.league.name,"Synthetic Leagu3");assert.match(next.digest,/^[0-9a-f]{64}$/);
+ }finally{f.cleanup();}
+});
+
+test("private league ids are validated identically on snapshot, decision and trade routes",async()=>{
+ const f=privateFolder();
+ try{await withPrivateMode(f,async()=>{
+  const build=(league,o)=>offlineBuild(league,o).then(s=>s.decision);
+  for(const id of ["12345","7"]){
+   const snap=await handleSnapshotRequest(local(`/api/snapshot?provider=espn&league=${id}`));
+   const decision=await handleDecisionRequest(local(`/api/decision-support?provider=espn&league=${id}`),{build});
+   assert.deepEqual([snap.status,(await snap.json()).code],[422,"LEAGUE_NOT_FOUND"],`snapshot ${id}`);
+   assert.deepEqual([decision.status,(await decision.json()).code],[422,"LEAGUE_NOT_FOUND"],`decision ${id}`);
+  }
+  for(const id of ["abc","1".repeat(26)]){
+   assert.equal((await handleSnapshotRequest(local(`/api/snapshot?provider=espn&league=${id}`))).status,400);
+   assert.equal((await handleDecisionRequest(local(`/api/decision-support?provider=espn&league=${id}`),{build})).status,400);
+  }
+ });}finally{f.cleanup();}
+ assert.equal(redactRequestLog(" GET /api/snapshot?provider=espn&league=424242&compact=0 200 in 12ms\n")," GET /api/snapshot?[redacted] 200 in 12ms\n");
+ assert.equal(redactRequestLog(" POST /api/trade 422 in 3ms")," POST /api/trade 422 in 3ms");
+ assert.match(readFileSync(new URL("../scripts/dev-private.js",import.meta.url),"utf8"),/redactRequestLog\(chunk/,"the launcher redacts its request log");
 });
