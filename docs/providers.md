@@ -26,7 +26,7 @@ New ESPN player keys are nfl:GSIS when an exact unambiguous crosswalk exists, ot
 | Draft picks | Transaction history | Disabled | Unsupported | Completed selections; no ownership ledger |
 | Complete waiver pool | Yes | Disabled | Unsupported | No (capped subset; free agent/waiver state and clear time). Replacement levels, VOR, add/drop, Pickup Rating and trades stay disabled even with scoring |
 | Add interest | Yes | Disabled | Unsupported | No |
-| Private auth | Not collected | Disabled | Not accepted | Not implemented (no transport/OAuth) |
+| Private auth | Not collected | Disabled | Not accepted | Local private mode only: saved bundle, no transport/OAuth (ADR 0005) |
 
 Capability availability describes adapter support, not a guarantee that every field exists in every league. Missing fields remain null. ESPN public API requests fail closed; model-meta still describes capabilities.
 
