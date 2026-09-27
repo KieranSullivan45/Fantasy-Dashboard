@@ -1,7 +1,7 @@
 # 0005 — Local private mode for an ESPN league (saved Flaim bundle)
 
 - Date: 2026-09-27
-- Status: accepted (V05-ESPN-04; revised in the same PR after the Codex review: connection-level loopback proof, fail-closed pool, scoring-cache invalidation, segment-based path checks)
+- Status: accepted (V05-ESPN-04; revised in the same PR after the Codex review: connection-level loopback proof, fail-closed pool, scoring-cache invalidation, segment-based path checks; second review: input-revision cache keys, content-digest file caching, unified private league-id validation, request-log redaction)
 - Task: V05-ESPN-04
 - Deciders: repository owner (design approved 2026-09-27); proposed and implemented by Claude Code
 - Follows: ADR 0002–0004 (all remain in force)
@@ -28,11 +28,13 @@ Flaim OAuth for a custom client needs confirmation from Flaim first (owner decis
    - a valid per-process loopback token (`FANTASY_LOOPBACK_TOKEN`) set by the private launcher.
 
    `pnpm dev:private` (`scripts/dev-private.js`) runs Next through a Node HTTP server that listens on `127.0.0.1` only. It generates a fresh token per launch, and plain `next dev`/`next start` never enable private mode. Production is unsupported.
+
+   Next's dev request log prints full URLs, and a custom server cannot disable it without a project `next.config`. Adding one would be a deployment-config change, so the launcher redacts query strings (which carry league IDs) from its own output instead.
 2. **Private configuration outside the repository** (`lib/private/config.js`, `espn-private-1`):
    - It holds the league ID, season, optional team ID, the saved-bundle path, and an `espn-scoring-1` configuration bound to the same league and season.
    - The config and bundle paths must resolve outside the working tree (absolute, symlinks resolved). The check compares path segments, so `..private/` or `.private/` directories inside the repository are inside.
    - Files are size-limited and credential keys are rejected.
-   - It is re-validated whenever the file changes.
+   - It is re-validated whenever its content changes. Cache identity is the SHA-256 of the bytes read, never mtime or size; the saved bundle is cached the same way.
    - Error messages never include paths or contents.
 3. **Saved Flaim bundle as the only facts source** (`lib/providers/flaim/bundle-file.js`):
    - The bundle is a locally saved set of Flaim tool results, mapped by the existing `espnFactsFromFlaim` with `access: "flaim_saved_bundle"`, `visibility: "private"` and `captured_at`.
@@ -43,6 +45,7 @@ Flaim OAuth for a custom client needs confirmation from Flaim first (owner decis
    - `ESPNProvider` gains async `loadFacts`/`loadCrosswalk` loaders and remains transport-agnostic.
    - It reports `privateLeagueAccess: available`; `publicLeagueAccess` stays unsupported.
    - Scored facts are cached per (facts, scoring-configuration content), so an edited scoring configuration is applied without a bundle change.
+   - **Input revision:** the provider exposes `getInputRevision()`, the content digests of the config and the bundle. Computing it re-validates both. The decision and trade routes compute it before any cache lookup and add it to the decision-cache key, so a changed input is rebuilt and an invalid current input is refused instead of served from cache.
 5. **Local request guard** (`lib/private/guard.js`, `lib/private/loopback.js`):
    - **Connection proof:** the launcher strips any client-supplied `x-fantasy-private-loopback` header and re-adds it with the token only when the socket's remote address is loopback. The guard requires that proof (constant-time comparison), so headers a remote client can forge are never sufficient.
    - **Defense in depth:** the `Host` header and request URL must be loopback, an `Origin` (when present) must be loopback, and browser cross-site requests are refused.
@@ -52,7 +55,8 @@ Flaim OAuth for a custom client needs confirmation from Flaim first (owner decis
    - **Snapshot and decision support:** served for the configured league with `Cache-Control: private, no-store` on every private response, including validation and provider errors. Errors never echo internals.
    - **Trade:** uses the same private path and still refuses, because the pool is incomplete (ADR 0003).
    - **Chat:** chat and accounts never pass the guard result, so they refuse ESPN; chat also refuses any decision marked private.
-   - **Decision cache key:** the key in `decision-service` gains the principal.
+   - **Decision cache key:** the key in `decision-service` gains the principal and, for private requests, the input revision.
+   - **League IDs:** all private routes validate league IDs with one rule (`validPrivateLeagueId`).
 7. **Private data boundary:**
    - Decisions built from private facts carry `visibility: "private"`.
    - `captureObservations`/`appendCapture` throw on them, so they never enter shared, immutable history.
