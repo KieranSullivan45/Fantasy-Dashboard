@@ -1,4 +1,4 @@
-# Architecture (current as of v0.4 Trade Analyzer delivery, V04-04)
+# Architecture (current as of V05-ESPN-04 local private ESPN mode, merged as `f3423ea`)
 
 This describes what exists in the code today. Rules live in `AGENTS.md`; planned work only under **Future direction**. Detailed specifications: `docs/v0.3.md` … `docs/v0.3.4.md`, `docs/providers.md`, `docs/assistant-api.md`, `docs/data-sources.md`, `docs/market-intelligence.md`.
 

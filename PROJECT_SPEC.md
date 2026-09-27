@@ -23,20 +23,25 @@ A transparent, evidence-first assistant for fantasy football managers: one place
 - Query the same analysis through `/api/chat/*` from ChatGPT, Claude or other assistants.
 - Inspect archived prospective recommendations for configured leagues.
 - Preview an authorized ESPN league export offline (browser memory only).
+- Analyze a 1–2 player trade between two Sleeper rosters with the dashboard Trade Analyzer (`POST /api/trade`).
+- Load one private ESPN league locally through the API routes (local private mode, saved Flaim bundle; not rendered in the dashboard yet).
 
-## Current capabilities (v0.3.4)
+## Current capabilities (v0.4 trade engine; v0.5 ESPN groundwork through V05-ESPN-04)
 
 - Sleeper: live, read-only, any public account/league/season; Superflex, TE premium, dual eligibility, IR/taxi.
 - Decision engine `decision-0.3.2`: backtested Start Value and acquisition blends, replacement/VOR, Hungarian legal-lineup optimizer, conservative add/drop protections, Pickup Rating.
 - Signal Engine `signals-1` with conservative role/usage/schedule/attention flags (informational).
 - Prospective history: immutable captures on the `data-archive` branch every six hours.
+- Trade engine (v0.4): pure evaluator over both rosters before/after the package, Hungarian lineups, forced drops with existing protections, no Market Value and no verdict; dashboard Trade Analyzer.
 - Provider boundary with a provider-neutral domain projection; ESPN offline normalizer and disabled live adapter.
+- ESPN groundwork: Flaim → `espn-facts-1` mapping, user-authorized scoring, verified NFL season state and a local-only private mode (ADR 0002–0005).
 - Responsive dashboard (home, lineup, waivers, players, signals, league, more).
 
 ## Current limitations
 
 - **Live ESPN synchronization is disabled** pending permitted access and an approved secure credential design. ESPN previews do not produce acquisition advice.
-- No Market Value, trade engine, rankings/projection consensus feed, ownership data, news/injury intelligence or notifications.
+- No Market Value, trade candidate generation, rankings/projection consensus feed, ownership data, news/injury intelligence or notifications.
+- ESPN-specific: no live transport or OAuth (saved Flaim bundle only), local private mode only, not rendered in the dashboard, excluded from chat routes. Trades, waivers/add-drop, Pickup Rating, replacement levels, VOR and complete free-agent evaluation stay withheld until a complete available pool exists; team D/ST scoring is unsupported.
 - Unsupported scoring rules are flagged, not approximated (list in `ARCHITECTURE.md`).
 - Add/drop policy weights and signal thresholds are transparent heuristics, not prospectively calibrated.
 - No commissioner lock/deadline handling or multi-move transactions; no private-user authentication.
@@ -55,6 +60,17 @@ Each milestone needs its own scoped tasks in `TASKS.md`, acceptance criteria and
 | v0.8 | ROS + Playoff Strategy | Rest-of-season and playoff-schedule planning. |
 | v0.9 | Calibration / Learning | Use accumulated prospective observations to evaluate and recalibrate policies and signals. |
 | v1.0 | Fantasy Command Center | Integrated, validated multi-provider experience. |
+
+### ESPN provider track
+
+The ESPN work carries `V05-*` task IDs. Its sequence keeps the existing numbering:
+
+1. **First Real ESPN Load / Activation Validation** (next; a validation milestone, not a numbered V05-ESPN task): exercise the merged local private mode against the owner's real league.
+2. V05-ESPN-05: live Flaim transport.
+3. V05-ESPN-06: OAuth (after Flaim confirms permission).
+4. V05-ESPN-07: dashboard UI for ESPN.
+
+Each needs its own approval and `TASKS.md` entry.
 
 ### v0.4 planning constraints
 

@@ -1,7 +1,7 @@
 # 0001 — Trade engine architecture (first wave)
 
 - Date: 2026-09-25
-- Status: proposed (repository-owner decisions of 2026-09-25 recorded below; revised after the Codex review of PR #2; becomes accepted when the planning PR merges)
+- Status: accepted (merged with the planning PR #2 as `ec27483` on 2026-09-25; repository-owner decisions of 2026-09-25 recorded below; revised after the Codex review of PR #2)
 - Task: V04-PLANNING (implementation: V04-01, V04-02; design follow-up: V04-03)
 - Deciders: repository owner (arbitration); proposed by Claude Code; review by Codex
 
