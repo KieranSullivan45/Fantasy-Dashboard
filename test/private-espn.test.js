@@ -335,7 +335,7 @@ test("regression: the private decision cache follows current inputs and never se
 test("regression: private file caches follow content, not size or modification time",()=>{
  const f=privateFolder();
  try{
-  const keep=path=>{const {atime,mtime,size}=statSync(path);return ()=>{utimesSync(path,atime,mtime);const after=statSync(path);assert.equal(after.size,size);assert.equal(after.mtimeMs,mtime.getTime());};};
+  const keep=path=>{const {atime,mtime,size}=statSync(path);return ()=>{utimesSync(path,atime,mtime);const after=statSync(path);assert.equal(after.size,size);assert.ok(Math.abs(after.mtimeMs-mtime.getTime())<1,"mtime preserved (sub-millisecond filesystem precision)");};};
   writeFileSync(f.configPath,JSON.stringify(CONFIG(c=>{c.scoring.offense.reception=0.5;})));
   assert.equal(loadPrivateConfig({env:f.env}).scoring.offense.reception,0.5);
   const restore=keep(f.configPath);writeFileSync(f.configPath,JSON.stringify(CONFIG(c=>{c.scoring.offense.reception=1.5;})));restore();
