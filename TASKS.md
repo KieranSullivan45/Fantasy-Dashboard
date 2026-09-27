@@ -96,8 +96,23 @@ Status values: `proposed` · `ready` · `in-progress` · `in-review` · `blocked
 - Handoff notes: —
 - Blockers: V04-01.
 
-### V05-ESPN-03 — Verified NFL season state for ESPN leagues
+### V05-ESPN-04 — Local private ESPN mode (saved Flaim bundle)
 - Status: in-review (awaiting owner review)
+- Owner: Claude Code
+- Reviewer: repository owner / ChatGPT
+- Branch: `feat/v05-espn-04-private-local-espn`, created from `origin/main` at `2458c0b` (V05-ESPN-03 merge)
+- Dependencies: V05-ESPN-02/03 merged; ADR 0002–0004; owner design approval of 2026-09-27.
+- Allowed scope: private config loader, local guard, saved-bundle facts source, private ESPN provider path, private cache behavior, route gating, chat/history privacy guards, the owner's own pending transactions in private mode, tests, ADR 0005, docs, `.env.example`, the `dev:private` script. Not in scope: network transport, OAuth, UI, dependencies, production/Vercel, committing any real league data or configuration.
+- Acceptance criteria: private data only on guarded loopback requests with private mode on and not on Vercel; config and bundle outside the repository; `private, no-store`; chat/accounts/capture never receive private data; only the owner's own single-team pending items shown; pool-dependent engines still gated; Sleeper unchanged; `pnpm test`, `pnpm build`, `pnpm test:ui` and `git diff --check` pass.
+- Handoff notes: see ADR 0005 and the task report. The first real load (writing the private config and capturing a bundle outside the repo) is a separate owner-approved step.
+- Files: new `lib/private/config.js`, `lib/private/guard.js`, `lib/providers/flaim/bundle-file.js`, `lib/providers/flaim/private-source.js`, `test/private-espn.test.js`, `docs/decisions/0005-local-private-espn.md`. Modified `lib/providers/index.js`, `lib/providers/espn.js`, `lib/providers/espn-normalize.js`, `lib/providers/flaim/espn-map.js`, `lib/snapshot-api.js`, `lib/decision-api.js`, `lib/trade-api.js`, `lib/chat-api.js`, `lib/decision-service.js`, `lib/decision/build-context.js`, `lib/history/contracts.js`, `package.json` (script only), `.env.example`, `ARCHITECTURE.md`, `docs/providers.md`, `docs/providers/espn.md`, this file.
+- Tests: `pnpm test` 296 pass / 0 fail after both review rounds (279 before this task + 17 new; tests from earlier tasks unmodified). `pnpm build` succeeded (15/15 pages). `pnpm test:ui` 34 passed (run with `PLAYWRIGHT_CHANNEL=chrome`). `git diff --check` clean.
+- Review fixes (Codex review of PR #9, same branch): (1) P1: loopback is enforced by code. `pnpm dev:private` is a 127.0.0.1-only Node launcher around Next that tags genuine loopback connections with a per-launch token; the guard requires it (forged headers are stripped); Origin validation added. (2) P1: pool completeness fails closed for every non-Sleeper snapshot (`availablePoolComplete`), and bundles without available players report an incomplete, empty pool. (3) P2: scored facts are cached per scoring-configuration content. (4) P2: outside-repository checks compare path segments. Private decision and trade responses are `private, no-store` in every outcome. Also verified manually: the launcher served a synthetic private folder on 127.0.0.1 (200, `private, no-store`; chat 422) and refused connections on the LAN address.
+- Second review round (Codex, PR #9): (1) P2: private decision/trade builds compute the provider input revision (config + bundle content digests; re-validates both) before any cache lookup, and the decision-cache key includes it. Changed inputs rebuild, and an invalid current config returns its error instead of a cached 200. (2) P2: private files are cached by SHA-256 content digest, not mtime/size. Also: the private trade regression now runs with private mode on and proves the pool gate executes; snapshot/decision/trade share one private league-id rule; the launcher redacts query strings from Next's dev request log (verified manually: no league IDs in the log).
+- Blockers / next: live transport (V05-ESPN-05) and OAuth (V05-ESPN-06, after Flaim confirms permission) need separate approval; the UI (V05-ESPN-07) is needed to render ESPN in the dashboard.
+
+### V05-ESPN-03 — Verified NFL season state for ESPN leagues
+- Status: done (merged to `main` via PR #8 as `2458c0b`)
 - Owner: Claude Code
 - Reviewer: repository owner / ChatGPT
 - Branch: `feat/v05-espn-03-nfl-season-state`, created from `origin/main` at `281ad86` (V05-ESPN-02 merge)
