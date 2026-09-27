@@ -1,7 +1,7 @@
 # 0005 — Local private mode for an ESPN league (saved Flaim bundle)
 
 - Date: 2026-09-27
-- Status: accepted (V05-ESPN-04)
+- Status: accepted (V05-ESPN-04; revised in the same PR after the Codex review: connection-level loopback proof, fail-closed pool, scoring-cache invalidation, segment-based path checks)
 - Task: V05-ESPN-04
 - Deciders: repository owner (design approved 2026-09-27); proposed and implemented by Claude Code
 - Follows: ADR 0002–0004 (all remain in force)
@@ -25,10 +25,12 @@ Flaim OAuth for a custom client needs confirmation from Flaim first (owner decis
    - `ESPN_PRIVATE_CONFIG` names an absolute path;
    - `VERCEL` is unset.
 
-   Production is unsupported. `pnpm dev:private` binds Next to `127.0.0.1`.
+   - a valid per-process loopback token (`FANTASY_LOOPBACK_TOKEN`) set by the private launcher.
+
+   `pnpm dev:private` (`scripts/dev-private.js`) runs Next through a Node HTTP server that listens on `127.0.0.1` only. It generates a fresh token per launch, and plain `next dev`/`next start` never enable private mode. Production is unsupported.
 2. **Private configuration outside the repository** (`lib/private/config.js`, `espn-private-1`):
    - It holds the league ID, season, optional team ID, the saved-bundle path, and an `espn-scoring-1` configuration bound to the same league and season.
-   - The config and bundle paths must resolve outside the working tree (symlinks resolved).
+   - The config and bundle paths must resolve outside the working tree (absolute, symlinks resolved). The check compares path segments, so `..private/` or `.private/` directories inside the repository are inside.
    - Files are size-limited and credential keys are rejected.
    - It is re-validated whenever the file changes.
    - Error messages never include paths or contents.
@@ -40,12 +42,14 @@ Flaim OAuth for a custom client needs confirmation from Flaim first (owner decis
    - It combines the private config, the saved bundle, authorized scoring and the public ID crosswalk from the existing shared cache. If the crosswalk is unavailable, identities stay unresolved.
    - `ESPNProvider` gains async `loadFacts`/`loadCrosswalk` loaders and remains transport-agnostic.
    - It reports `privateLeagueAccess: available`; `publicLeagueAccess` stays unsupported.
-5. **Local request guard** (`lib/private/guard.js`):
-   - Private data is served only when private mode is on, both the `Host` header and the request URL are loopback, and the request is not a browser cross-site request.
+   - Scored facts are cached per (facts, scoring-configuration content), so an edited scoring configuration is applied without a bundle change.
+5. **Local request guard** (`lib/private/guard.js`, `lib/private/loopback.js`):
+   - **Connection proof:** the launcher strips any client-supplied `x-fantasy-private-loopback` header and re-adds it with the token only when the socket's remote address is loopback. The guard requires that proof (constant-time comparison), so headers a remote client can forge are never sufficient.
+   - **Defense in depth:** the `Host` header and request URL must be loopback, an `Origin` (when present) must be loopback, and browser cross-site requests are refused.
    - Otherwise requests behave exactly as today (ESPN → `UNSUPPORTED_FEATURE`), so the guard never reveals whether private mode exists.
    - The principal is `local-owner`. `user=` is refused for ESPN; the session team or an explicit `roster=` selects the roster.
 6. **Routes:**
-   - **Snapshot and decision support:** served for the configured league with `Cache-Control: private, no-store`. Errors never echo internals.
+   - **Snapshot and decision support:** served for the configured league with `Cache-Control: private, no-store` on every private response, including validation and provider errors. Errors never echo internals.
    - **Trade:** uses the same private path and still refuses, because the pool is incomplete (ADR 0003).
    - **Chat:** chat and accounts never pass the guard result, so they refuse ESPN; chat also refuses any decision marked private.
    - **Decision cache key:** the key in `decision-service` gains the principal.
@@ -68,4 +72,4 @@ Flaim OAuth for a custom client needs confirmation from Flaim first (owner decis
 
 - The owner can load their league locally through the API routes with real authorized scoring. Dashboard rendering of ESPN needs the UI task (V05-ESPN-07).
 - Data freshness depends on recapturing the bundle. Live transport (V05-ESPN-05) and OAuth (V05-ESPN-06, after Flaim confirms permission) are separate, approved tasks.
-- Waivers, Pickup Rating, add/drop, replacement levels, VOR and trades stay disabled until a complete pool exists.
+- Waivers, Pickup Rating, add/drop, replacement levels, VOR and trades stay disabled until a complete pool exists. Pool completeness fails closed: any non-Sleeper snapshot must prove `available_players.complete === true`, and a bundle without available players reports an incomplete, empty pool.
