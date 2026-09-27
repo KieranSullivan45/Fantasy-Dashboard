@@ -6,6 +6,8 @@ import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {privateModeEnabled,loadPrivateConfig,outsideRepository,validatePrivateConfig} from "../lib/private/config.js";
 import {privateRequest,privateIdentity} from "../lib/private/guard.js";
+import {LOOPBACK_HEADER,TOKEN_ENV,tagLoopbackRequest,isLoopbackAddress,loopbackProofMatches} from "../lib/private/loopback.js";
+import {createDecisionService} from "../lib/decision-service.js";
 import {readSavedFlaimBundle,espnFactsFromSavedBundle} from "../lib/providers/flaim/bundle-file.js";
 import {createPrivateEspnProvider} from "../lib/providers/flaim/private-source.js";
 import {setPrivateEspnProviderFactory,requestProvider} from "../lib/providers/index.js";
@@ -22,7 +24,7 @@ import {proposal} from "./trade-api-fixtures.js";
 
 const read=path=>JSON.parse(readFileSync(new URL(path,import.meta.url),"utf8"));
 const BUNDLE=read("./fixtures/flaim-espn/synthetic-league.json"),SCORING=read("./fixtures/espn-scoring/synthetic-authorized-scoring.json");
-const LEAGUE="424242",BASE="http://127.0.0.1:3000";
+const LEAGUE="424242",BASE="http://127.0.0.1:3000",TOKEN="ab".repeat(32);
 const CROSSWALK=["910001","910002","910003","910004","910005","910006","920001","920002","930001","930002","930009"].map((id,i)=>({espn_id:id,gsis_id:`00-99${String(i).padStart(5,"0")}`,sleeper_id:"NA"}));
 const CONFIG=(edit=c=>c)=>{const c={schema_version:"espn-private-1",provider:"espn",league_id:LEAGUE,season:2030,team_id:1,facts_source:{kind:"flaim_bundle_file",path:"bundle.json"},scoring:structuredClone(SCORING)};edit(c);return c;};
 const refused=code=>e=>e.code===code;
@@ -30,26 +32,30 @@ const refused=code=>e=>e.code===code;
 function privateFolder({config=CONFIG(),bundle=structuredClone(BUNDLE)}={}){
  const dir=mkdtempSync(join(tmpdir(),"espn-private-test-")),configPath=join(dir,"espn-private.json");
  writeFileSync(join(dir,"bundle.json"),JSON.stringify(bundle));writeFileSync(configPath,JSON.stringify(config));
- return {dir,configPath,env:{FANTASY_PRIVATE_MODE:"local",ESPN_PRIVATE_CONFIG:configPath},cleanup:()=>rmSync(dir,{recursive:true,force:true})};
+ return {dir,configPath,env:{FANTASY_PRIVATE_MODE:"local",ESPN_PRIVATE_CONFIG:configPath,[TOKEN_ENV]:TOKEN},cleanup:()=>rmSync(dir,{recursive:true,force:true})};
 }
 const provider=env=>createPrivateEspnProvider({env,loadIds:async()=>({data:CROSSWALK})});
 /** Runs `fn` with process-level private mode on (routes read process.env), then restores everything. */
 async function withPrivateMode(folder,fn){
- const saved={mode:process.env.FANTASY_PRIVATE_MODE,config:process.env.ESPN_PRIVATE_CONFIG,vercel:process.env.VERCEL};
+ const saved={mode:process.env.FANTASY_PRIVATE_MODE,config:process.env.ESPN_PRIVATE_CONFIG,vercel:process.env.VERCEL,token:process.env[TOKEN_ENV]};
  Object.assign(process.env,folder.env);delete process.env.VERCEL;setPrivateEspnProviderFactory(()=>provider(folder.env));
  try{return await fn();}finally{
-  for(const [key,value] of [["FANTASY_PRIVATE_MODE",saved.mode],["ESPN_PRIVATE_CONFIG",saved.config],["VERCEL",saved.vercel]])if(value===undefined)delete process.env[key];else process.env[key]=value;
+  for(const [key,value] of [["FANTASY_PRIVATE_MODE",saved.mode],["ESPN_PRIVATE_CONFIG",saved.config],["VERCEL",saved.vercel],[TOKEN_ENV,saved.token]])if(value===undefined)delete process.env[key];else process.env[key]=value;
   setPrivateEspnProviderFactory();}
 }
-const local=(path,headers={})=>new Request(`${BASE}${path}`,{headers:{host:"127.0.0.1:3000","accept-encoding":"identity",...headers}});
+// A request as the private dev server forwards it from a genuine loopback connection (it carries the loopback proof).
+const local=(path,headers={})=>new Request(`${BASE}${path}`,{headers:{host:"127.0.0.1:3000","accept-encoding":"identity",[LOOPBACK_HEADER]:TOKEN,...headers}});
 const offlineBuild=(league,options)=>{const {loadLeague,...fixture}=decisionFixtureOptions();return buildDecisionState(league,{...fixture,...options});};
 
-test("private mode is off unless explicitly enabled, configured and not on Vercel",()=>{
+test("private mode is off unless explicitly enabled, configured, not on Vercel and launched by the private dev server",()=>{
+ const on={FANTASY_PRIVATE_MODE:"local",ESPN_PRIVATE_CONFIG:"/x.json",[TOKEN_ENV]:TOKEN};
  assert.equal(privateModeEnabled({}),false);
  assert.equal(privateModeEnabled({FANTASY_PRIVATE_MODE:"local"}),false);
- assert.equal(privateModeEnabled({FANTASY_PRIVATE_MODE:"on",ESPN_PRIVATE_CONFIG:"/x.json"}),false);
- assert.equal(privateModeEnabled({FANTASY_PRIVATE_MODE:"local",ESPN_PRIVATE_CONFIG:"/x.json"}),true);
- assert.equal(privateModeEnabled({FANTASY_PRIVATE_MODE:"local",ESPN_PRIVATE_CONFIG:"/x.json",VERCEL:"1"}),false);
+ assert.equal(privateModeEnabled({...on,FANTASY_PRIVATE_MODE:"on"}),false);
+ assert.equal(privateModeEnabled(on),true);
+ assert.equal(privateModeEnabled({...on,VERCEL:"1"}),false);
+ assert.equal(privateModeEnabled({...on,[TOKEN_ENV]:undefined}),false,"plain next dev/next start never enable private mode");
+ assert.equal(privateModeEnabled({...on,[TOKEN_ENV]:"short"}),false);
  assert.throws(()=>loadPrivateConfig({env:{}}),refused("UNSUPPORTED_FEATURE"));
 });
 
@@ -70,9 +76,12 @@ test("private configuration is validated, league/season bound and must live outs
 });
 
 test("local guard admits only loopback, same-site requests with private mode on",()=>{
- const env={FANTASY_PRIVATE_MODE:"local",ESPN_PRIVATE_CONFIG:"/x.json"};
+ const env={FANTASY_PRIVATE_MODE:"local",ESPN_PRIVATE_CONFIG:"/x.json",[TOKEN_ENV]:TOKEN};
  for(const [url,host] of [[`${BASE}/api/snapshot`,"127.0.0.1:3000"],["http://localhost:3000/api/snapshot","localhost:3000"],["http://[::1]:3000/api/snapshot","[::1]:3000"]])
-  assert.deepEqual(privateRequest(new Request(url,{headers:{host}}),{env}),{principal:"local-owner",mode:"local"});
+  assert.deepEqual(privateRequest(new Request(url,{headers:{host,[LOOPBACK_HEADER]:TOKEN}}),{env}),{principal:"local-owner",mode:"local"});
+ assert.equal(privateRequest(local("/x",{origin:"https://evil.example"}),{env}),null,"foreign Origin");
+ assert.equal(privateRequest(local("/x",{origin:"null"}),{env}),null,"opaque Origin");
+ assert.ok(privateRequest(local("/x",{origin:"http://localhost:3000"}),{env}),"loopback Origin");
  assert.equal(privateRequest(new Request("http://192.168.1.20:3000/x",{headers:{host:"192.168.1.20:3000"}}),{env}),null,"LAN access");
  assert.equal(privateRequest(new Request("http://evil.example/x",{headers:{host:"127.0.0.1:3000"}}),{env}),null,"URL host must be loopback too");
  assert.equal(privateRequest(new Request(`${BASE}/x`,{headers:{host:"attacker.example"}}),{env}),null,"DNS rebinding Host");
@@ -163,7 +172,7 @@ test("routes: private snapshot and decision are no-store; trade stays gated; cha
   assert.equal(decision.status,200);assert.equal(decision.headers.get("cache-control"),"private, no-store");
   const d=await decision.json();assert.equal(d.visibility,"private");assert.equal(d.identity.provider,"espn");assert.equal(d.waivers.status,"unsupported");
   assert.ok(!JSON.stringify(d).includes("syn-0002"),"pending items never reach decision output");
-  const trade=await handleTradeRequest(new Request(`${BASE}/api/trade`,{method:"POST",headers:{host:"127.0.0.1:3000","content-type":"application/json"},
+  const trade=await handleTradeRequest(new Request(`${BASE}/api/trade`,{method:"POST",headers:{host:"127.0.0.1:3000","content-type":"application/json",[LOOPBACK_HEADER]:TOKEN},
    body:JSON.stringify({provider:"espn",league:LEAGUE,proposal:proposal(["nfl:00-9900000"],["nfl:00-9900006"])})}),{build});
   assert.equal(trade.status,422);assert.equal((await trade.json()).code,"UNSUPPORTED_FEATURE");assert.equal(builds,2);
   for(const resource of ["waivers","league-summary","player","matchup","signals"]){
@@ -202,4 +211,95 @@ test("Sleeper routes are unchanged with private mode enabled",async()=>{
   assert.equal(decision.status,200);assert.match(decision.headers.get("cache-control"),/public, s-maxage=60/);
   assert.equal((await decision.json()).visibility,undefined);
  }finally{f.cleanup();}
+});
+
+test("regression: a remote client claiming localhost headers never reaches private data",async()=>{
+ const env={FANTASY_PRIVATE_MODE:"local",ESPN_PRIVATE_CONFIG:"/x.json",[TOKEN_ENV]:TOKEN};
+ const forged={host:"127.0.0.1:3000",origin:"http://127.0.0.1:3000","sec-fetch-site":"same-origin"};
+ assert.equal(privateRequest(new Request(`${BASE}/api/snapshot`,{headers:forged}),{env}),null,"no connection proof");
+ assert.equal(privateRequest(new Request(`${BASE}/api/snapshot`,{headers:{...forged,[LOOPBACK_HEADER]:"cd".repeat(32)}}),{env}),null,"guessed proof");
+ assert.equal(loopbackProofMatches(TOKEN,TOKEN),true);assert.equal(loopbackProofMatches(TOKEN.slice(1),TOKEN),false);
+ // What the private dev server does per connection: forged proofs are stripped, only loopback sockets are tagged.
+ const incoming=(remoteAddress,headers)=>({socket:{remoteAddress},headers:{...headers},rawHeaders:Object.entries(headers).flat()});
+ const remote=incoming("203.0.113.9",{...forged,[LOOPBACK_HEADER]:TOKEN});
+ assert.equal(tagLoopbackRequest(remote,TOKEN),false);
+ assert.equal(remote.headers[LOOPBACK_HEADER],undefined);assert.ok(!remote.rawHeaders.map(h=>h.toLowerCase()).includes(LOOPBACK_HEADER));
+ const lan=incoming("::ffff:192.168.1.20",{...forged});assert.equal(tagLoopbackRequest(lan,TOKEN),false);assert.equal(lan.headers[LOOPBACK_HEADER],undefined);
+ for(const address of ["127.0.0.1","::1","::ffff:127.0.0.1"]){const r=incoming(address,{...forged,[LOOPBACK_HEADER]:"forged"});assert.equal(tagLoopbackRequest(r,TOKEN),true);assert.equal(r.headers[LOOPBACK_HEADER],TOKEN);
+  assert.deepEqual(r.rawHeaders.filter((h,i)=>i%2===0&&h.toLowerCase()===LOOPBACK_HEADER),[LOOPBACK_HEADER]);}
+ assert.equal(isLoopbackAddress("10.0.0.1"),false);assert.equal(isLoopbackAddress(undefined),false);
+ const f=privateFolder();
+ try{await withPrivateMode(f,async()=>{
+  const response=await handleSnapshotRequest(new Request(`${BASE}/api/snapshot?provider=espn&league=${LEAGUE}`,{headers:forged}));
+  assert.equal(response.status,422);assert.equal((await response.json()).code,"UNSUPPORTED_FEATURE");
+ });}finally{f.cleanup();}
+ assert.match(readFileSync(new URL("../package.json",import.meta.url),"utf8"),/"dev:private": "node scripts\/dev-private.js"/);
+ const launcher=readFileSync(new URL("../scripts/dev-private.js",import.meta.url),"utf8");
+ assert.match(launcher,/hostname = "127\.0\.0\.1"/);assert.match(launcher,/tagLoopbackRequest\(req/);assert.match(launcher,/newLoopbackToken\(\)/);
+});
+
+test("regression: missing available players fail closed; no replacement values are produced",async()=>{
+ const bundle=structuredClone(BUNDLE);delete bundle.freeAgents;
+ const f=privateFolder({bundle});
+ try{
+  const p=provider(f.env),s=await p.getSnapshot(LEAGUE);
+  assert.deepEqual(s.coverage.available_players,{complete:false,returned:0,limit:null});assert.equal(s.capabilities.completePlayerPool,false);
+  assert.ok(s.warnings.some(w=>/No available-player list was supplied/.test(w.message)));
+  const {loadLeague,...fixture}=decisionFixtureOptions(),state=await buildDecisionState(LEAGUE,{...fixture,provider:"espn",providerAdapter:p});
+  assert.ok(Object.values(state.levels).every(l=>l.replacement_value===null&&l.coverage==="unsupported"));
+  assert.ok(Object.values(state.contexts).every(c=>c.model.replacement.value_over_replacement===null));
+  assert.ok(state.decision.team_strength_v2.every(t=>Object.values(t.positions).every(x=>x.need_or_surplus===null)));
+  assert.equal(state.decision.waivers.status,"unsupported");assert.equal(state.decision.coverage.available_pool_complete,false);
+  const trade=await handleTradeRequest(new Request(`${BASE}/api/trade`,{method:"POST",headers:{host:"127.0.0.1:3000","content-type":"application/json",[LOOPBACK_HEADER]:TOKEN},
+   body:JSON.stringify({provider:"espn",league:LEAGUE,proposal:proposal(["nfl:00-9900000"],["nfl:00-9900006"])})}),{build:async()=>state});
+  assert.equal(trade.status,422);assert.equal((await trade.json()).code,"UNSUPPORTED_FEATURE");
+  // Unproven completeness is incomplete for any non-Sleeper snapshot, even without an available_players record.
+  const {coverage,...rest}=s,bare={...rest,coverage:{...coverage,available_players:undefined}};
+  const bareState=await buildDecisionState(LEAGUE,{...fixture,provider:"espn",loadLeague:async()=>bare,providerAdapter:p});
+  assert.ok(Object.values(bareState.levels).every(l=>l.replacement_value===null));
+ }finally{f.cleanup();}
+});
+
+test("regression: a changed scoring configuration rescores cached facts",async()=>{
+ const f=privateFolder();
+ try{
+  const p=provider(f.env);
+  assert.equal((await p.getSnapshot(LEAGUE)).league.scoring_settings.rec,0.5);
+  writeFileSync(f.configPath,JSON.stringify(CONFIG(c=>{c.scoring.offense.reception=1;})));
+  assert.equal((await p.getSnapshot(LEAGUE)).league.scoring_settings.rec,1,"new reception value is applied without a bundle change");
+  writeFileSync(f.configPath,JSON.stringify(CONFIG()));
+  assert.equal((await p.getSnapshot(LEAGUE)).league.scoring_settings.rec,0.5);
+ }finally{f.cleanup();}
+});
+
+test("regression: outside-repository checks compare path segments, not prefixes",()=>{
+ const root=mkdtempSync(join(tmpdir(),"espn-root-test-"));
+ try{
+  for(const name of ["..private",".private","...","..x"]){mkdirSync(join(root,name));assert.equal(outsideRepository(join(root,name,"espn-private.json"),root),false,name);}
+  assert.equal(outsideRepository(join(root,"sub","..","x.json"),root),false,"normalized back inside");
+  assert.equal(outsideRepository(join(root,"..","sibling","x.json"),root),true,"true parent directory");
+  assert.equal(outsideRepository(root,root),false);
+  const f=privateFolder({config:CONFIG(c=>{c.facts_source.path="..private/bundle.json";})});
+  try{mkdirSync(join(f.dir,"..private"));assert.throws(()=>loadPrivateConfig({env:f.env,root:f.dir}),refused("PRIVATE_CONFIG_INVALID"));}finally{f.cleanup();}
+ }finally{rmSync(root,{recursive:true,force:true});}
+});
+
+test("private decision responses are private, no-store in every outcome, through the production decision cache",async()=>{
+ const f=privateFolder();
+ try{await withPrivateMode(f,async()=>{
+  let builds=0;const service=createDecisionService(async(league,o)=>{builds++;return offlineBuild(league,o);});
+  const build=(league,o)=>service(league,o).then(state=>state.decision);
+  for(const path of [`/api/decision-support?provider=espn&league=${LEAGUE}`,`/api/decision-support?provider=espn&league=${LEAGUE}`]){
+   const r=await handleDecisionRequest(local(path),{build});assert.equal(r.status,200);assert.equal(r.headers.get("cache-control"),"private, no-store");}
+  assert.equal(builds,1,"the shared cache serves the second private request");
+  for(const [path,status] of [[`/api/decision-support?provider=espn`,400],[`/api/decision-support?provider=espn&league=${LEAGUE}&week=abc`,400],
+   [`/api/decision-support?provider=espn&league=${LEAGUE}&user=123456`,400],[`/api/decision-support?provider=espn&league=${LEAGUE}&week=9`,409],[`/api/decision-support?provider=espn&league=999999`,422]]){
+   const r=await handleDecisionRequest(local(path),{build});assert.equal(r.status,status,path);assert.equal(r.headers.get("cache-control"),"private, no-store",path);}
+  const large=await handleDecisionRequest(local(`/api/decision-support?provider=espn&league=${LEAGUE}`,{"accept-encoding":"gzip"}),{build});
+  assert.equal(large.headers.get("cache-control"),"private, no-store","compressed responses too");
+  const tradeError=await handleTradeRequest(new Request(`${BASE}/api/trade`,{method:"POST",headers:{host:"127.0.0.1:3000","content-type":"application/json",[LOOPBACK_HEADER]:TOKEN},body:JSON.stringify({provider:"espn",proposal:{}})}),{build:service});
+  assert.equal(tradeError.status,400);assert.equal(tradeError.headers.get("cache-control"),"private, no-store");
+  // The same league id through the public Sleeper path is a different cache entry (provider and principal in the key).
+  const before=builds;await service(LEAGUE,{provider:"sleeper",identity:{userId:null,rosterId:null,season:null}}).catch(()=>null);assert.equal(builds,before+1);
+ });}finally{f.cleanup();}
 });

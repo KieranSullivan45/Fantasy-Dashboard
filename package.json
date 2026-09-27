@@ -7,7 +7,7 @@
   "type": "module",
   "scripts": {
     "dev": "next dev",
-    "dev:private": "next dev -H 127.0.0.1",
+    "dev:private": "node scripts/dev-private.js",
     "build": "next build",
     "start": "next start",
     "test": "node --test test/*.test.js",
