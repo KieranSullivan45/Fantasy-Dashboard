@@ -1,7 +1,7 @@
 # Evaluation Protocol v1
 
 - Date: 2026-09-29
-- Task: EVAL-PROTOCOL-01 (ADR 0006)
+- Task: EVAL-PROTOCOL-01 (ADR 0007)
 - Status: **submitted for registration.** This document becomes Protocol v1 only when it is merged to `main` with the repository owner's approval (section 14). Until then nothing below is in force.
 - Scope: documentation only. No code, schema, workflow, weight, threshold or policy is changed by this document.
 - Derived from: the project's Thread 5 evaluation design and Thread 3 hypothesis list (research reports in the project shared folder, not in this repository; everything needed is restated here) and the owner decisions of 2026-09-29 recorded in section 1. Where they differ, section 1 wins.
@@ -18,7 +18,7 @@ Every accuracy or decision claim about Fantasy-Dashboard should be checkable and
 | D2 | 2026 is the **prospective sealed season**, sealed only after this protocol is registered. Existing pre-registration 2026 captures are **pilot/debugging evidence**, not confirmatory. | same |
 | D3 | Provisional practical-significance screens: **0.05 MAE** (point forecast) and **0.1 lineup points per roster-week** (decision level). Not permanent constants; not sufficient for promotion by themselves. | same |
 | D4 | Consensus projections are archived as a **benchmark only**, pending licensing confirmation. Never a production model input. Betting/odds-derived data stays excluded. | same, owner 2026-09-29 (item 10) |
-| D5 | **Prediction of record.** Waiver: the last valid scheduled waiver capture before the applicable waiver decision window. Lineup: the last valid prediction before each player's kickoff. | owner 2026-09-29 (item 2) |
+| D5 | **Prediction of record.** Waiver: for each league waiver processing run, the last valid scheduled waiver capture before the authoritative waiver processing cutoff (before that claim window closes). Lineup: the last valid prediction before each player's kickoff. | owner 2026-09-29 (item 2); waiver wording clarified by the owner's PM review of PR #13 |
 | D6 | Historical hypotheses **H1–H10 are frozen** (section 10). Null and negative findings are preserved; H8 tests the null that late-season endpoint surge adds nothing beyond the existing prior. | Thread 3 decisions, owner 2026-09-29 |
 | D7 | **Birthdate rule.** Crosswalk vs nflverse difference ≤ 30 days: age may be used and a discrepancy flag is preserved. Difference > 30 days: `age = unknown` until resolved. One source is never silently chosen. | owner 2026-09-29 (item 4) |
 | D8 | Phase 0 offline historical research and Tier A are approved after this protocol is committed; Tier C stays blocked until Tier A shows value. No production model, schema, weight or policy change follows from research alone. | owner 2026-09-29 (items 3, 7) |
@@ -67,15 +67,15 @@ Every result states its layer and one claim class. A result of one class is neve
 ### 4.1 Rules (owner decision D5)
 
 - **Lineup of record.** For each player and game, the last **valid** prediction whose `generated_at` is earlier than that player's kickoff. Every later capture is supplementary. A player who kicks off before any valid capture has no lineup-of-record and is counted in the dropped-case table.
-- **Waiver of record.** For each league and waiver decision window, the last **valid scheduled waiver capture** before the applicable waiver decision window. Captures outside that class are supplementary.
+- **Waiver of record.** For each league waiver processing run, the last **valid scheduled waiver capture** that (a) occurs after the prior week's games and data have settled sufficiently for `data_through_week` = evaluated week − 1, and (b) is strictly earlier than the **authoritative waiver processing cutoff** for that run (that is, before that claim window closes). This is the latest valid pre-processing decision snapshot. It is not "before the window opens". Captures outside that class are supplementary. If an authoritative processing cutoff cannot be established for a run, that run has **no class-C waiver-of-record**; a cutoff is never inferred retrospectively.
 
 ### 4.2 Definitions (v1 operationalization)
 
-These definitions make D5 testable. Items marked **Q** are the points the owner should confirm at registration.
+These definitions make D5 testable. Both points that were open at submission were resolved by the owner's PM review of PR #13 and are recorded below.
 
 - **Valid capture.** A `capture-1` record that: passes its schema check; has a parseable `generated_at`; declares a `data_through_week` equal to the evaluated week minus one (the last completed week); carries `model_version` and `feature_version`; and whose own source records report no failed required source. A capture failing any test is *invalid*, is never a record of record, and is listed in the dropped-case table.
-- **Waiver decision window (Q).** The interval in which a manager can still place a claim for the next waiver processing run of that league, ending at that processing time. The waiver-of-record capture is the last valid scheduled waiver capture whose `generated_at` precedes the **close** of that window and that follows the settlement of the prior week's games (`data_through_week` = evaluated week − 1). This reading keeps the record fixed before the decision is made and before any outcome exists. If the owner intends "before the window opens", the rule is changed by a new protocol version, because it alters which capture is scored.
-- **Scheduled waiver capture (Q).** A capture produced by a schedule dedicated to the waiver decision (Thread 5 proposed Wednesday–Thursday morning ET, illustrative). **No such schedule exists today**: the archive is written every 6 hours by cron (`17 */6 * * *`) and after every green `Validate` run on `main`, and records do not state which trigger produced them. Creating the schedule changes `.github/workflows/`, which needs separate human approval (section 12). Until then no waiver-of-record exists and waiver outcomes are P or X, not C.
+- **Waiver processing cutoff.** The authoritative time at which a league's waiver run processes claims and its claim window closes. It must come from the provider or league settings for that run, not from a guess; where it cannot be established, section 4.1 applies (no class-C waiver-of-record for that run). The waiver-of-record capture is fixed before the decision is made and before any outcome exists.
+- **Scheduled waiver capture.** A capture produced by a schedule dedicated to the waiver decision (Thread 5 proposed Wednesday–Thursday morning ET, illustrative). The current 6-hour cron (`17 */6 * * *`) and the post-`Validate` captures on `main` are **not** scheduled waiver-of-record captures and are never retroactively classified as such; records also do not state which trigger produced them. Creating a dedicated schedule changes `.github/workflows/`, which is a separate, unapproved change (section 12). Until it is approved and shipped, **no waiver outcome is class C** and waiver results remain class P or X. Lineup and forecast confirmatory claims may still proceed where the current archive supports them (section 3).
 - **Kickoff source.** Kickoff times come from the same schedule source the scorer already uses (`evaluateObservation` counts only games with kickoff after `generated_at`). A row whose kickoff precedes `generated_at` is never scored; it is counted with reason `kickoff_before_capture`.
 
 ### 4.3 Dropped-case table
@@ -275,6 +275,8 @@ Changing any definition, threshold, cohort, metric, baseline, hypothesis or seas
 
 ## 14. Registration
 
-Protocol v1 is registered when all of the following hold: (1) this file is merged to `main` with owner approval; (2) the SHA-256 of `docs/evaluation-protocol-v1.md` at the merge commit and that commit's SHA and time are recorded in the `EVAL-PROTOCOL-01` entry of `TASKS.md`; (3) the owner has resolved or accepted the two **Q** items in section 4.2. The merge commit time is the pilot boundary for section 2. Compute the hash with `git show <merge-commit>:docs/evaluation-protocol-v1.md | sha256sum`. External witness is the Git history of `main`; published history is never rewritten.
+Protocol v1 becomes effective and registered at the **merge commit time** of the pull request that adds it, provided the owner has approved it and the section 4.2 definitions were resolved before merge (they were, in the owner's PM review of PR #13). That merge commit time is the pilot/confirmatory boundary for section 2: captures with an earlier `generated_at` are pilot.
 
-Until registration is recorded, every 2026 capture is pilot.
+Immediately after merge, the merge commit SHA, merge time and the SHA-256 of `docs/evaluation-protocol-v1.md` are recorded in the `EVAL-PROTOCOL-01` entry of `TASKS.md` (`git show <merge-commit>:docs/evaluation-protocol-v1.md | sha256sum`). That bookkeeping commit does **not** move the boundary and does not retroactively activate the protocol. External witness is the Git history of `main`; published history is never rewritten.
+
+Before the merge, every 2026 capture is pilot.

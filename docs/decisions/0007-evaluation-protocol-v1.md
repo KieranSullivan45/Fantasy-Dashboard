@@ -1,7 +1,7 @@
-# 0006 — Evaluation Protocol v1: season ledger and prediction of record
+# 0007 — Evaluation Protocol v1: season ledger and prediction of record
 
 - Date: 2026-09-29
-- Status: proposed (becomes accepted when `docs/evaluation-protocol-v1.md` is merged to `main` with owner approval and registered per its section 14)
+- Status: proposed (accepted, and the protocol effective, at the merge commit time of the pull request that adds it, per protocol section 14; that time is the pilot/confirmatory boundary)
 - Task: EVAL-PROTOCOL-01
 - Deciders: repository owner (decisions of 2026-09-29); proposed by Claude Code
 
@@ -13,7 +13,7 @@ The repository has a leakage-aware retrospective harness (`scripts/backtest.js`,
 
 1. Adopt `docs/evaluation-protocol-v1.md` as the evaluation protocol. It is documentation only and changes no code, schema, workflow, weight, threshold or policy.
 2. Treat 2022–2025 as consumed seasons (development and walk-forward evidence only). Treat 2026 as sealed from registration onward, and all earlier 2026 captures as pilot.
-3. Define the prediction of record: lineup = last valid prediction before each player's kickoff; waiver = last valid scheduled waiver capture before the applicable waiver decision window.
+3. Define the prediction of record: lineup = last valid prediction before each player's kickoff; waiver = for each league waiver processing run, the last valid scheduled waiver capture that follows settlement of the prior week's data and is strictly earlier than the authoritative waiver processing cutoff (before that claim window closes). A run whose cutoff cannot be established has no class-C waiver-of-record; it is never inferred retrospectively.
 4. Adopt provisional practical-significance screens (0.05 MAE; 0.1 lineup points per roster-week) that are necessary and never sufficient for promotion, plus the promotion gates in the protocol.
 5. Freeze hypotheses H1–H10 and preserve null results. Consensus projections are a benchmark only.
 6. Record what the protocol cannot yet support (frozen baselines, full alternatives, recommended lineup, protocol hash, a scheduled waiver capture). Those need a new record schema version and a workflow change, which are separate approvals and are not made here.
@@ -29,5 +29,6 @@ The repository has a leakage-aware retrospective harness (`scripts/backtest.js`,
 - Confirmatory claims are limited until the archive follow-up ships; waiver outcomes stay pilot or exploratory until a scheduled waiver capture exists.
 - The 2026 sealed outcomes must not inform research or design; Phase 0 research uses seasons ≤ 2025.
 - A wrong frozen definition costs a season; corrections need a new protocol version, not an edit.
-- Open points for the owner at registration: the exact meaning of "before the applicable waiver decision window" and the "scheduled waiver capture" class (protocol section 4.2, marked Q).
+- The current 6-hour cron and post-`Validate` captures are not scheduled waiver-of-record captures and are not retroactively classified as such. Until a separately approved workflow adds a dedicated waiver capture schedule, no waiver outcome is class C; lineup and forecast confirmatory claims may proceed where the current archive supports them.
+- Registration is the merge commit time; the follow-up record of merge SHA, time and file hash in `TASKS.md` does not move the boundary.
 - Revisit when: the archive schema version and scheduled capture exist, Market Value has an approved source, consensus licensing is confirmed, or a season's results show the definitions cannot be scored.
