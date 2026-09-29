@@ -129,3 +129,55 @@ test("reconciliation is pure and leaves Sleeper and the ESPN gates untouched",()
  assert.equal(s.coverage.transactions.truncated,true);assert.equal(s.capabilities.completePlayerPool,false);
  assert.ok(s.warnings.some(w=>/may be truncated/.test(w.message)));
 });
+
+// Codex review of PR #12 (head 1d3cff7): two reproduced blockers and the timestamp gaps.
+test("a failed bid that belongs only to another team never cancels the owner's pending claim",()=>{
+ const rows=[CLAIM,row("b-1","waiver","failed",2000,[OTHER],{add:["930002"]})];
+ assert.deepEqual(view(rows).pending,["p-claim"]);
+ assert.deepEqual(verdicts(rows),[]);
+ // The neighbours keep their documented behavior: the owner's own failure resolves, another team succeeding fails closed.
+ assert.deepEqual(verdicts([CLAIM,row("b-2","waiver","failed",2000,[OWNER],{add:["930002"]})]),["resolved"]);
+ assert.deepEqual(verdicts([CLAIM,row("b-3","waiver","complete",2000,[OTHER],{add:["930002"]})]),["ambiguous"]);
+ assert.deepEqual(view([CLAIM,row("b-3","waiver","complete",2000,[OTHER],{add:["930002"]})]).pending,[]);
+ // A failed row with no team identity cannot be attributed to another team, so it still fails closed.
+ assert.deepEqual(verdicts([CLAIM,row("b-4","waiver","failed",2000,[],{add:["930002"]})]),["ambiguous"]);
+});
+
+test("trade team identity may exist only on normalized trade sides",()=>{
+ // 1. Completed matching trade: no top-level team ids, sides carry the stable ids.
+ const done=row("b-t1","trade","complete",2000,[],{sides:swap(OWNER,OTHER,"930009","910005")});
+ assert.deepEqual(verdicts([PROPOSAL,done]),["resolved"]);
+ assert.deepEqual(view([PROPOSAL,done]).pending,[]);
+ // 2. Matching declined trade: a facts-level item whose player references carry team ids (no top-level ids).
+ const [proposal]=factsItems([PROPOSAL]);
+ const ref=(id,team)=>({espn_id:id,name:null,position:"WR",team:null,team_id:team});
+ const declined={id:"b-t2",type:"trade_decline",status:"complete",timestamp:2000,week:3,team_ids:[],adds:[ref("930009",1),ref("910005",2)],drops:[ref("910005",1),ref("930009",2)],private:false,faab_bid:null};
+ assert.deepEqual([...reconcilePendingTransactions([proposal,declined]).values()],["resolved"]);
+ // Team ids on the sides are still stable ids only: a side naming other teams is unrelated.
+ const elsewhere={...declined,id:"b-t2b",adds:[ref("930009",5),ref("910005",6)],drops:[]};
+ assert.equal(reconcilePendingTransactions([proposal,elsewhere]).size,0);
+ // 3. Matching player evidence, team identity genuinely unavailable: fail closed, never unrelated.
+ const noTeams=row("b-t3","trade_decline","complete",2000,[],{add:["930009"],drop:["910005"]});
+ assert.deepEqual(verdicts([PROPOSAL,noTeams]),["ambiguous"]);
+ assert.deepEqual(view([PROPOSAL,noTeams]).pending,[]);
+ // Without any matching player evidence there is nothing to link, so the proposal stays visible.
+ assert.deepEqual(view([PROPOSAL,row("b-t4","trade_decline","complete",2000,[],{add:["910003"],drop:["910004"]})]).pending,["p-prop"]);
+ assert.deepEqual(view([PROPOSAL,row("b-t5","trade_decline","complete",2000,[])]).pending,["p-prop"]);
+});
+
+test("timestamps: equal or missing fail closed, and a same-id row must be later to resolve",()=>{
+ const same=(status,ts)=>row("p-claim","waiver",status,ts,[OWNER],{add:["930002"]});
+ const other=(ts)=>row("ts-1","waiver","complete",ts,[OWNER],{add:["930002"]});
+ assert.deepEqual(verdicts([CLAIM,other(1000)]),["ambiguous"],"equal timestamp");
+ assert.deepEqual(verdicts([CLAIM,other(null)]),["ambiguous"],"missing timestamp");
+ assert.deepEqual(verdicts([{...CLAIM,timestamp:null},other(2000)]),["ambiguous"],"pending row without a timestamp");
+ assert.deepEqual(verdicts([CLAIM,other(2000)]),["resolved"],"strictly later");
+ assert.deepEqual(verdicts([CLAIM,other(500)]),[],"an older row is not an outcome");
+ assert.deepEqual(verdicts([CLAIM,same("complete",2000)]),["resolved"],"same provider id, later terminal row");
+ assert.deepEqual(verdicts([CLAIM,same("complete",500)]),[],"same provider id, older terminal row");
+ assert.deepEqual(verdicts([CLAIM,same("complete",1000)]),["ambiguous"],"same provider id, equal timestamp");
+ assert.deepEqual(verdicts([CLAIM,same("complete",null)]),["ambiguous"],"same provider id, missing timestamp");
+ assert.deepEqual(verdicts([CLAIM,same("unknown",2000)]),["ambiguous"],"same provider id, unknown status");
+ assert.deepEqual(view([CLAIM,same("complete",500)]).pending.length,1,"the older same-id row leaves the pending item visible");
+ assert.deepEqual(view([CLAIM,other(1000)]).pending,[],"equal timestamp hides the item");
+});
