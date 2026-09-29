@@ -123,10 +123,10 @@ Status values: `proposed` · `ready` · `in-progress` · `in-review` · `blocked
 - Blockers: none.
 
 ### ESPN-PENDING-01 — Reconcile stale pending ESPN transactions
-- Status: proposed (not approved to start; no implementation)
-- Owner: unassigned (repository owner to assign)
-- Reviewer: unassigned
-- Branch: not created
+- Status: in-review (PR #12; start approved by the repository owner on 2026-09-29)
+- Owner: Claude Code
+- Reviewer: repository owner / ChatGPT
+- Branch: `claude/espn-pending-01-myn6tg`, created from `origin/main` at `1b0400c` (branch name set by the Claude project session, not the `<type>/<task-id>-<slug>` convention), then merged with `main` at `fbbd1cd` (PR #11)
 - Dependencies: ESPN-ACTIVATION done; V05-ESPN-04 merged (`f3423ea`); ADR 0005.
 - Allowed scope: a small, deterministic fix to how ESPN transaction status is normalized and how pending items are derived, after inspecting the current provider mapping, pending-item handling and transaction normalization. Not in scope: ESPN transport redesign, V05-ESPN-05 live transport, OAuth (V05-ESPN-06), dashboard UI (V05-ESPN-07), dependencies, model or policy changes.
 - Scope statement:
@@ -138,8 +138,12 @@ Status values: `proposed` · `ready` · `in-progress` · `in-review` · `blocked
   - Tests use synthetic fixtures only.
   - No private league data in Git history.
 - Acceptance criteria: to be finalized by the owner at approval. Expected: the smallest deterministic reconciliation, unchanged fail-closed and privacy behavior, targeted synthetic tests, and `pnpm test`, `pnpm build` and `git diff --check` results reported (`pnpm test:ui` if routes, APIs or loaders are touched).
-- Handoff notes: —
-- Blockers: owner approval to start.
+- Handoff notes: root cause (inferred from the code path and the activation finding; raw payloads are private): `espnFactsFromFlaim` copies each row's provider status verbatim and `snapshotFromEspnFacts` shows the owner's private items by status and team alone. ESPN records a claim's or proposal's outcome as a separate row with its own id and never updates the original, so nothing marked it resolved. New pure `reconcilePendingTransactions` (`lib/providers/espn-transactions.js`), called in `snapshotFromEspnFacts` before the privacy filter, hides a pending item when a later non-pending row is provably (`resolved`) or possibly (`ambiguous`) its outcome, linked by provider id, timestamps, team ids and ESPN player ids only. Items with no related later row are kept. Private mode adds `coverage.transactions.owner_pending_reconciled_out` and a `STALE_DATA_RISK` warning for the owner's own hidden items; other managers' items stay in `withheld_private`. Rule and alternatives: ADR 0006.
+  - Files: new `lib/providers/espn-transactions.js`, `test/espn-pending-reconcile.test.js`, `docs/decisions/0006-espn-pending-reconciliation.md`. Modified `lib/providers/espn-normalize.js`, `ARCHITECTURE.md`, `docs/providers/espn.md`, this file.
+  - Codex review of PR #12 at `1d3cff7` (two reproduced blockers, fixed on the same branch): (1) a `failed` waiver row that belongs only to another team no longer hides the owner's pending claim (another team succeeding still fails closed); (2) team identity now also comes from the stable team ids on normalized trade sides, and matching player evidence with no available team identity fails closed as ambiguous instead of unrelated. Same-provider-id matching now honors the timestamp rule (older row is not an outcome; equal or missing is ambiguous). Known limit: the Flaim mapper reads `trade_sides` only for completed `trade` rows, so a decline, veto or uphold row carries team identity only through its top-level `team_ids`; without them it fails closed on player overlap.
+  - Tests: `pnpm test` 307 pass / 0 fail (296 before + 11 new; existing tests unmodified). `pnpm build` succeeded. `pnpm test:ui` 34 passed (run with an equivalent Playwright config pointing at the installed Chromium, because the sandbox browser build did not match the pinned version; no repo file changed). `git diff --check` clean. CI on the PR head was green.
+  - Residual ambiguity: the transaction window is bounded and possibly truncated, so a resolving row outside it cannot be seen. A genuine pending item is hidden when a later row for the same team and player cannot be told apart from its outcome. No provider link between a row and its outcome is available until live transport exposes one.
+- Blockers: owner review and merge.
 
 ### V05-ESPN-04 — Local private ESPN mode (saved Flaim bundle)
 - Status: done (merged to `main` via PR #9 as `f3423ea`)

@@ -36,7 +36,7 @@ Flaim (an MCP service holding the user's ESPN session on its side) was verified 
 - NFL season state is verified, never inferred from the fantasy season phase (ADR 0004). The engine derives the current NFL regular-season week from nflverse schedule kickoffs and loads current-season statistics only when that week equals the ESPN scoring period. Mismatches, off-season dates and missing schedules leave the state unknown.
 - Available players are a capped subset (never a complete pool) with free-agent/waiver state and waiver clear time. ESPN-wide rostered and started rates are discarded.
 - Undecided matchup totals are withheld.
-- Transactions are a bounded, possibly truncated window. The manager's pending claims and proposals are private and withheld from the snapshot. FAAB bids stay unknown.
+- Transactions are a bounded, possibly truncated window. The manager's pending claims and proposals are private and withheld from the snapshot. FAAB bids stay unknown. A pending claim or proposal is never trusted on the provider's status alone: it is shown to the owner (private mode) only when no later record resolves or may resolve it, using provider ids, timestamps, team ids and ESPN player ids (ADR 0006). Anything unprovable is hidden.
 - Historical weekly rosters keep membership and slots only; their stats and rates are current-time values.
 - Negative D/ST ids and unmapped ids stay unresolved.
 
