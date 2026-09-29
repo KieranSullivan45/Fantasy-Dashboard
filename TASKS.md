@@ -108,15 +108,38 @@ Status values: `proposed` · `ready` · `in-progress` · `in-review` · `blocked
 - Blockers: owner review and merge.
 
 ### ESPN-ACTIVATION — First Real ESPN Load / Activation Validation
-- Status: proposed (planning placeholder; not started)
+- Status: done (validated 2026-09-29; the 2026-09-29 run is authoritative and the earlier 2026-09-27 run is superseded)
+- Owner: repository owner (the run was executed in a Claude Code Remote Control session on the owner's device)
+- Reviewer: repository owner / ChatGPT
+- Branch: none (validation only; no code changed)
+- Dependencies: V05-ESPN-04 merged (`f3423ea`); ADR 0002–0005.
+- Allowed scope: a validation milestone, not V05-ESPN-05. The owner wrote the private config and captured a Flaim bundle outside the repository; the existing local private mode (`pnpm dev:private`) was exercised as merged. No new transport, OAuth, UI or dependencies; no private league data committed.
+- Acceptance criteria: a real ESPN league is represented accurately (rosters, slots, lineup legality, league-scored points against ESPN, NFL week verification, identity resolution), gated sections are withheld with warnings, and findings are recorded without private data.
+- Handoff notes: non-private results only. Nothing from the league (identifiers, team or player names, roster contents, file paths, transactions, raw Flaim payloads) is recorded here or in Git.
+  - Validated: a real private ESPN league loaded through the merged local-private pipeline. The private config validated for provider `espn`, season 2026, team id 2 and `user_authorized` scoring. 8 of 8 rosters matched, including starters, bench and IR. Standings matched. Lineup slots matched and the lineup legality checks passed. Week-2 player scoring matched ESPN exactly for all comparable rostered players. NFL week verification passed. All non-D/ST player identities resolved by exact ID. The privacy guards passed.
+  - Gates that stayed enforced as designed: replacement levels, VOR, need/surplus, add/drop and Pickup Rating withheld; Trade Analyzer refused because the available-player pool is incomplete; D/ST valuation unsupported.
+  - Known limitations: (1) kicker and D/ST lineup values are not modeled; (2) some rare scoring rules remain unsupported rather than approximated; (3) manual Flaim bundle capture currently requires adapting the session result into the loader envelope; (4) resolved ESPN transactions can incorrectly appear as pending (proposed follow-up: ESPN-PENDING-01).
+  - Tests: none run; documentation-only ledger update. `git diff --check` clean.
+- Blockers: none.
+
+### ESPN-PENDING-01 — Reconcile stale pending ESPN transactions
+- Status: proposed (not approved to start; no implementation)
 - Owner: unassigned (repository owner to assign)
 - Reviewer: unassigned
 - Branch: not created
-- Dependencies: V05-ESPN-04 merged (`f3423ea`); ADR 0002–0005.
-- Allowed scope: a validation milestone, not V05-ESPN-05. The owner writes the private config and captures a Flaim bundle outside the repository; the existing local private mode (`pnpm dev:private`) is exercised as merged. No new transport, OAuth, UI or dependencies; no private league data committed.
-- Acceptance criteria: to be set by the owner. Expected to check that a real ESPN league is represented accurately (rosters, slots, lineup legality, league-scored points against ESPN, NFL week verification, identity resolution, gated sections withheld with warnings) and to record findings without private data.
+- Dependencies: ESPN-ACTIVATION done; V05-ESPN-04 merged (`f3423ea`); ADR 0005.
+- Allowed scope: a small, deterministic fix to how ESPN transaction status is normalized and how pending items are derived, after inspecting the current provider mapping, pending-item handling and transaction normalization. Not in scope: ESPN transport redesign, V05-ESPN-05 live transport, OAuth (V05-ESPN-06), dashboard UI (V05-ESPN-07), dependencies, model or policy changes.
+- Scope statement:
+  - Determine why already-resolved claims and trades can still carry pending status.
+  - Do not blindly trust the provider's pending status.
+  - Reconcile against later completed, declined or trade records when that is deterministic.
+  - Fail closed when the current status cannot be proven (the item is not shown as pending).
+  - Preserve the privacy invariant that only the authenticated user's own pending items may be exposed (ADR 0005).
+  - Tests use synthetic fixtures only.
+  - No private league data in Git history.
+- Acceptance criteria: to be finalized by the owner at approval. Expected: the smallest deterministic reconciliation, unchanged fail-closed and privacy behavior, targeted synthetic tests, and `pnpm test`, `pnpm build` and `git diff --check` results reported (`pnpm test:ui` if routes, APIs or loaders are touched).
 - Handoff notes: —
-- Blockers: owner approval to start the real load.
+- Blockers: owner approval to start.
 
 ### V05-ESPN-04 — Local private ESPN mode (saved Flaim bundle)
 - Status: done (merged to `main` via PR #9 as `f3423ea`)
@@ -126,12 +149,12 @@ Status values: `proposed` · `ready` · `in-progress` · `in-review` · `blocked
 - Dependencies: V05-ESPN-02/03 merged; ADR 0002–0004; owner design approval of 2026-09-27.
 - Allowed scope: private config loader, local guard, saved-bundle facts source, private ESPN provider path, private cache behavior, route gating, chat/history privacy guards, the owner's own pending transactions in private mode, tests, ADR 0005, docs, `.env.example`, the `dev:private` script. Not in scope: network transport, OAuth, UI, dependencies, production/Vercel, committing any real league data or configuration.
 - Acceptance criteria: private data only on guarded loopback requests with private mode on and not on Vercel; config and bundle outside the repository; `private, no-store`; chat/accounts/capture never receive private data; only the owner's own single-team pending items shown; pool-dependent engines still gated; Sleeper unchanged; `pnpm test`, `pnpm build`, `pnpm test:ui` and `git diff --check` pass.
-- Handoff notes: see ADR 0005 and the task report. The first real load (writing the private config and capturing a bundle outside the repo) is the separate, owner-approved **First Real ESPN Load / Activation Validation** milestone (ESPN-ACTIVATION), not V05-ESPN-05.
+- Handoff notes: see ADR 0005 and the task report. The first real load (writing the private config and capturing a bundle outside the repo) was the separate, owner-approved **First Real ESPN Load / Activation Validation** milestone (ESPN-ACTIVATION, done 2026-09-29), not V05-ESPN-05.
 - Files: new `lib/private/config.js`, `lib/private/guard.js`, `lib/providers/flaim/bundle-file.js`, `lib/providers/flaim/private-source.js`, `test/private-espn.test.js`, `docs/decisions/0005-local-private-espn.md`. Modified `lib/providers/index.js`, `lib/providers/espn.js`, `lib/providers/espn-normalize.js`, `lib/providers/flaim/espn-map.js`, `lib/snapshot-api.js`, `lib/decision-api.js`, `lib/trade-api.js`, `lib/chat-api.js`, `lib/decision-service.js`, `lib/decision/build-context.js`, `lib/history/contracts.js`, `package.json` (script only), `.env.example`, `ARCHITECTURE.md`, `docs/providers.md`, `docs/providers/espn.md`, this file.
 - Tests: `pnpm test` 296 pass / 0 fail after both review rounds (279 before this task + 17 new; tests from earlier tasks unmodified). `pnpm build` succeeded (15/15 pages). `pnpm test:ui` 34 passed (run with `PLAYWRIGHT_CHANNEL=chrome`). `git diff --check` clean.
 - Review fixes (Codex review of PR #9, same branch): (1) P1: loopback is enforced by code. `pnpm dev:private` is a 127.0.0.1-only Node launcher around Next that tags genuine loopback connections with a per-launch token; the guard requires it (forged headers are stripped); Origin validation added. (2) P1: pool completeness fails closed for every non-Sleeper snapshot (`availablePoolComplete`), and bundles without available players report an incomplete, empty pool. (3) P2: scored facts are cached per scoring-configuration content. (4) P2: outside-repository checks compare path segments. Private decision and trade responses are `private, no-store` in every outcome. Also verified manually: the launcher served a synthetic private folder on 127.0.0.1 (200, `private, no-store`; chat 422) and refused connections on the LAN address.
 - Second review round (Codex, PR #9): (1) P2: private decision/trade builds compute the provider input revision (config + bundle content digests; re-validates both) before any cache lookup, and the decision-cache key includes it. Changed inputs rebuild, and an invalid current config returns its error instead of a cached 200. (2) P2: private files are cached by SHA-256 content digest, not mtime/size. Also: the private trade regression now runs with private mode on and proves the pool gate executes; snapshot/decision/trade share one private league-id rule; the launcher redacts query strings from Next's dev request log (verified manually: no league IDs in the log).
-- Blockers / next: none for this task (merged). Next is First Real ESPN Load / Activation Validation (ESPN-ACTIVATION, validation only). Live Flaim transport (V05-ESPN-05) and OAuth (V05-ESPN-06, after Flaim confirms permission) need separate approval; the UI (V05-ESPN-07) is needed to render ESPN in the dashboard.
+- Blockers / next: none for this task (merged). ESPN-ACTIVATION (validation only) is done; the proposed follow-up is ESPN-PENDING-01. Live Flaim transport (V05-ESPN-05) and OAuth (V05-ESPN-06, after Flaim confirms permission) need separate approval; the UI (V05-ESPN-07) is needed to render ESPN in the dashboard.
 
 ### V05-ESPN-03 — Verified NFL season state for ESPN leagues
 - Status: done (merged to `main` via PR #8 as `2458c0b`)
