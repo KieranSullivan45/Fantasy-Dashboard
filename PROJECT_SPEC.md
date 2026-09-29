@@ -65,12 +65,12 @@ Each milestone needs its own scoped tasks in `TASKS.md`, acceptance criteria and
 
 The ESPN work carries `V05-*` task IDs. Its sequence keeps the existing numbering:
 
-1. **First Real ESPN Load / Activation Validation** (next; a validation milestone, not a numbered V05-ESPN task): exercise the merged local private mode against the owner's real league.
+1. **ESPN-ACTIVATION — First Real ESPN Load / Activation Validation** (completed and validated 2026-09-29; a validation milestone, not a numbered V05-ESPN task): the merged local private mode was exercised against the owner's real league. Non-private results and known limitations are recorded in `TASKS.md`.
 2. V05-ESPN-05: live Flaim transport.
 3. V05-ESPN-06: OAuth (after Flaim confirms permission).
 4. V05-ESPN-07: dashboard UI for ESPN.
 
-Each needs its own approval and `TASKS.md` entry.
+Each remaining item needs its own approval and `TASKS.md` entry. A proposed follow-up fix, ESPN-PENDING-01 (reconcile stale pending ESPN transactions), is tracked in `TASKS.md`; it is not one of the numbered V05-ESPN milestones.
 
 ### v0.4 planning constraints
 
