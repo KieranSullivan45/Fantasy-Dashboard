@@ -107,6 +107,17 @@ Status values: `proposed` · `ready` · `in-progress` · `in-review` · `blocked
 - Handoff notes: documentation only, no executable behavior changed, so `pnpm test`/`pnpm build` were not run. `git diff --check` clean.
 - Blockers: owner review and merge.
 
+### EVAL-PROTOCOL-01 — Evaluation Protocol v1 (docs only)
+- Status: in-review
+- Owner: Claude Code
+- Reviewer: repository owner / ChatGPT
+- Branch: `claude/m1-evaluation-protocol-k2ot7f` (branch name set by the Claude project session, not the `<type>/<task-id>-<slug>` convention), from `origin/main` at `fbbd1cd`
+- Dependencies: owner decisions of 2026-09-29 (season ledger, thresholds, prediction of record, benchmark-only consensus). No dependency on PR #12, which this task does not touch.
+- Allowed scope: `docs/evaluation-protocol-v1.md`, `docs/decisions/0006-evaluation-protocol-v1.md`, this entry. Forbidden: any code, tests, schemas (`observation-1`, `capture-1`, `archive-index-1`, `outcome-1` and the other protected records), `.github/workflows/`, `scripts/`, model weights or thresholds, calibration, `data-archive`, dependencies, PR #12, and any Phase 0, M2, M3 or M4 work.
+- Acceptance criteria: the protocol states the season ledger (2022–2025 consumed, 2026 sealed only after registration, existing 2026 captures pilot), the provisional 0.05 MAE / 0.1 lineup-points thresholds as screens that are not sufficient alone, consensus projections as benchmark only, the prediction-of-record rules as decided by the owner, primary metrics, baseline ladder, cohorts, ablation and statistical rules, leakage rules, promotion gates, the frozen H1–H10, the birthdate rule, Phase 0/Tier A conditions, and a registration procedure; it does not overstate what the archive can support; ADR 0006 records the decision; no executable file changes.
+- Handoff notes: documentation only, no executable behavior changed, so `pnpm test` and `pnpm build` were not run. The owner-decided prediction-of-record wording is used as written; the protocol adds an operational definition marked **Q** (waiver decision window and scheduled waiver capture) for the owner to confirm or correct at registration. Registration (protocol section 14) is not yet recorded: after merge, record the merge commit SHA/time and the SHA-256 of `docs/evaluation-protocol-v1.md` in this entry; that time is the pilot boundary. Files changed: `docs/evaluation-protocol-v1.md` (new), `docs/decisions/0006-evaluation-protocol-v1.md` (new), `TASKS.md`. Remaining, each needing its own approval: the archive schema version (protocol hash, config hash, frozen baselines, alternatives, recommended lineup), a scheduled waiver capture and outcome scoring, the harness extension, then Phase 0 and Tier A research (owner approved after this protocol is committed).
+- Blockers: owner review and merge; owner confirmation of the two **Q** items.
+
 ### ESPN-ACTIVATION — First Real ESPN Load / Activation Validation
 - Status: done (validated 2026-09-29; the 2026-09-29 run is authoritative and the earlier 2026-09-27 run is superseded)
 - Owner: repository owner (the run was executed in a Claude Code Remote Control session on the owner's device)
