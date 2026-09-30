@@ -27,6 +27,17 @@ Status values: `proposed` · `ready` · `in-progress` · `in-review` · `blocked
 
 ## Active tasks
 
+### SLEEPER-REFRESH-01 — Sleeper self-service refresh
+- Status: in-progress (implementation approved by the ChatGPT PM on 2026-09-30 under the SLEEPER-REFRESH-01 execution contract; M2 of the approved research plan)
+- Owner: Claude Code
+- Reviewer: Codex first pass; ChatGPT PM final adjudication
+- Branch: `feat/sleeper-refresh-01-u2c945` (the contract names `feat/sleeper-refresh-01`; the Claude project session assigned this push branch), from `main` at `6f43ab5` (PR #15)
+- Dependencies: EVAL-PROTOCOL-01 (Evaluation Protocol v1 in force); V04-04 trade basis guards; V05-ESPN-04 private revision pattern (ADR 0005).
+- Allowed scope: a process-local Sleeper resource coordinator beneath snapshot assembly (`lib/sources/sleeper/*`, `lib/sleeper.js`, `lib/providers/sleeper.js`); a POST refresh route (`app/api/refresh/route.js`, `lib/refresh-api.js`); revision pinning in `lib/decision-service.js`; revision in `lib/decision/basis.js`; revision-qualified reads in `lib/snapshot-api.js`, `lib/decision-api.js`; client loaders (`lib/snapshot-loader.js`, `lib/decision-loader.js`, `lib/trade-loader.js`), a client auto-refresh scheduler, `app/dashboard/DashboardShell.js`, the trade page only for revision invalidation, CSS for the sync status; targeted unit/API/UI tests; `ARCHITECTURE.md`, provider/refresh docs, one ADR. Forbidden: model weights, calibrated policy, Pickup Rating, replacement, drop protections, trade evaluator policy, signals, statistical-source policy, archive/history schemas, capture workflow, ESPN implementation, provider writes, authentication, dependencies/lockfile, CI/workflows, deployment config, Market Value, protected schemas beyond additive fields.
+- Acceptance criteria: the contract's matrix A–U (single-flight, retry, last-known-good, first-load failure, validate-before-promote, revision semantics, decision invalidation, revision/build race, chat consistency, trade consistency, identity and private isolation, no GET mutation, cache consistency, browser races, refresh UI, staleness, visibility cadence, sanitized provider errors, full pool, compatibility); `pnpm test`, `pnpm build`, `pnpm test:ui`, `git diff --check` reported with exact counts.
+- Handoff notes: in progress.
+- Blockers: none.
+
 ### AGENT-SETUP — Shared multi-agent documentation
 - Status: done
 - Owner: Claude Code
