@@ -24,7 +24,7 @@ curl --fail --compressed 'https://fantasy-dashboard-zeta.vercel.app/api/chat/lea
 curl --fail --compressed 'https://fantasy-dashboard-zeta.vercel.app/api/chat/signals?league=YOUR_LEAGUE_ID&user=spectator&limit=10'
 ```
 
-Cache: public s-maxage30/stale-while-revalidate30, no cookies or credentials, JSON content type, nosniff and read-only CORS. Cache/service keys include league, stable user, selected roster and season. Data-source caches have their own documented ages; generated_at does not mean every source is equally fresh. Inspect source digests, through-week, coverage and warnings before drawing conclusions.
+Cache: public s-maxage30/stale-while-revalidate30, no cookies or credentials, JSON content type, nosniff and read-only CORS. Cache/service keys include league, stable user, selected roster and season, and for Sleeper the committed input revision (ADR 0008): after a refresh the server builds from the new revision immediately, while a shared-cache copy may lag by the cache window. Data-source caches have their own documented ages; generated_at does not mean every source is equally fresh. Inspect source digests, through-week, coverage and warnings before drawing conclusions.
 
 To retrieve an indexed capture, use the returned path under `https://raw.githubusercontent.com/KieranSullivan45/Fantasy-Dashboard/data-archive/data/`; gzip-decode the capture. This is explicit bulk evidence, not automatically embedded into small chat responses. The SHA256 field hashes canonical observation JSON; source hashes separately identify downloaded source bytes. No giant historical dataset is served by default.
 
