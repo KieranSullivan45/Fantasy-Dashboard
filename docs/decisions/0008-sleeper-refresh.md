@@ -61,7 +61,12 @@ its decision cache on a content revision (ADR 0005); Sleeper had no equivalent.
    `failed` = last-known-good served). `status` follows every *unresolved* resource of the committed bundle (latest attempt
    failed or not promoted), not only this call's attempts, so an immediate retry that the cooldown, backoff or
    `Retry-After` deferred still reads `failed`/`partial` with the error kept. Additive fields: `unresolved`, `deferred`
-   (unresolved and not re-attempted by this call) and `retry_after_seconds`. When every tracked arbitrary league is busy,
+   (unresolved and not re-attempted by this call) and `retry_after_seconds`. The hint comes from the same eligibility rule
+   the coordinator uses to decide a fetch (Retry-After, then the manual cooldown for forced dynamic resources, or the
+   freshness window and 30 s failure backoff otherwise), evaluated for a retry in the same mode. Only failed sources set
+   it (a `not_promoted` candidate needs no fetch of its own): with failed core sources it is the time until the last of
+   them is eligible, otherwise until the next failed optional source is. It is `null` when nothing failed or a blocking
+   source is in flight, and never reports ready before the source can actually be attempted. When every tracked arbitrary league is busy,
    the request is refused with `503 CAPACITY` (`Retry-After`) before any upstream work. It never writes history or the archive, never creates an observation or
    prediction of record, never builds a decision and never runs a trade. There is no GET form; ordinary GETs refresh only
    due resources in memory (non-forced).
@@ -71,7 +76,11 @@ its decision cache on a content revision (ADR 0005); Sleeper had no equivalent.
    for another revision is served `no-store`; a decision for another revision is `409 STALE_REVISION`, `no-store`. The
    client never accepts a snapshot whose `coverage.input_revision` differs from the `rev` it named (revisions are not
    ordered, so older and newer are treated alike): it does not publish it or overwrite the remembered revision, keeps any
-   same-selection data, and shows an explicit sync mismatch; a manual or automatic sync (POST) resolves it. Existing
+   same-selection data, and shows an explicit sync mismatch. The same rule covers automatic (`due`) refreshes: with a held
+   revision H, the client accepts a result only when `input_revision` is H or `previous_input_revision` is H (the serving
+   instance advanced from exactly H); any other result is kept out and H stays remembered. Only an explicit manual sync
+   may switch to the serving instance's committed revision, which resolves a mismatch. With no held revision, a result is
+   accepted normally. Existing
    URLs without `rev` keep their headers (chat stays `s-maxage=30`).
 10. **Abuse and memory bounds.** Refresh stays unauthenticated. Bounds: per-league single flight, cooldown, 30 s failure
     backoff for non-forced reads, `Retry-After` honoured, a fixed request envelope (2 KB, two modes), at most 16 arbitrary

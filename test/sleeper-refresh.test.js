@@ -711,3 +711,138 @@ test("Codex 5: an immediate retry that is deferred stays failed; a retry after t
   answer = later; await loader.refresh(LEAGUE, { userId: null });
   assert.equal(states.at(-1).refreshError, "");
 });
+
+// ---------------------------------------------------------------- Codex delta review regressions
+
+test("Codex delta 1: automatic due sync accepts only the held revision or a result that advanced from it; manual may switch", async () => {
+  const R1 = `sleeper:${"1".repeat(64)}`, R2 = `sleeper:${"2".repeat(64)}`, R3 = `sleeper:${"3".repeat(64)}`;
+  const snap = rev => ({ league: { league_id: LEAGUE, name: rev.slice(8, 9) }, coverage: { input_revision: rev } });
+  const body = (previous, input, attempted = []) => ({ schema_version: "refresh-1", status: "ok", previous_input_revision: previous, input_revision: input, revision_changed: previous !== input, attempted, failed: [], snapshot: snap(input) });
+  function held() {
+    const states = [], requests = []; let answer = body(null, R2);
+    const loader = createSnapshotLoader(s => states.push(s), async (url, options) => { requests.push({ url, options }); return { ok: true, json: async () => typeof answer === "function" ? answer(url) : answer }; });
+    const rev = () => new URL(requests.at(-1).url, "http://x").searchParams.get("rev");
+    const set = next => { answer = next; };
+    return { states, loader, set, rememberedIs: async expected => { set(snap(expected)); await loader.load(LEAGUE, { userId: null }); assert.equal(rev(), expected); },
+      init: async () => { await loader.refresh(LEAGUE, { userId: null }); assert.equal(states.at(-1).data.coverage.input_revision, R2); } };
+  }
+  const due = h => h.loader.refresh(LEAGUE, { userId: null }, { mode: "due" });
+  const rejected = (h, why) => {
+    const s = h.states.at(-1);
+    assert.equal(s.data.coverage.input_revision, R2, `${why}: R2 stays visible`);
+    assert.equal(s.mismatch, true); assert.match(s.refreshError, /different sync/); assert.equal(s.refreshing, false);
+  };
+  // 1. Other instance holds R1, nothing due: previous R1 / input R1.
+  let h = held(); await h.init(); h.set(body(R1, R1)); await due(h);
+  rejected(h, "previous R1/input R1"); await h.rememberedIs(R2);
+  // 2. Other instance holds R1, resources due, produces R3: continuity from R2 is unproven.
+  h = held(); await h.init(); h.set(body(R1, R3, ["rosters"])); await due(h);
+  rejected(h, "previous R1/input R3"); assert.ok(!h.states.some(s => s.data?.coverage?.input_revision === R3)); await h.rememberedIs(R2);
+  // 3. Same instance advances from R2 to R3: accepted and remembered.
+  h = held(); await h.init(); h.set(body(R2, R3, ["rosters"])); await due(h);
+  assert.equal(h.states.at(-1).data.coverage.input_revision, R3); assert.ok(!h.states.at(-1).mismatch); assert.equal(h.states.at(-1).refreshError, "");
+  await h.rememberedIs(R3);
+  // 4. Due call with no change: previous R2 / input R2 retained normally.
+  h = held(); await h.init(); h.set(body(R2, R2)); await due(h);
+  assert.equal(h.states.at(-1).data.coverage.input_revision, R2); assert.ok(!h.states.at(-1).mismatch); await h.rememberedIs(R2);
+  // A later no-change due result for the held revision also accepts even when the instance's previous differs.
+  h = held(); await h.init(); h.set(body(R1, R2, ["rosters"])); await due(h);
+  assert.equal(h.states.at(-1).data.coverage.input_revision, R2); assert.ok(!h.states.at(-1).mismatch);
+  // 5. Manual sync may accept the serving instance's R1 (explicit), and resolves an earlier due mismatch.
+  h = held(); await h.init(); h.set(body(R1, R1)); await due(h); rejected(h, "due before manual");
+  h.set(body(R1, R1)); await h.loader.refresh(LEAGUE, { userId: null });
+  assert.equal(h.states.at(-1).data.coverage.input_revision, R1); assert.ok(!h.states.at(-1).mismatch); await h.rememberedIs(R1);
+  // Cold (no held revision): a due result is accepted normally.
+  const cold = []; const coldLoader = createSnapshotLoader(s => cold.push(s), async () => ({ ok: true, json: async () => body(R1, R3) }));
+  await coldLoader.refresh(LEAGUE, { userId: null }, { mode: "due" }); assert.equal(cold.at(-1).data.coverage.input_revision, R3);
+  // Stale-response guard still applies to a due refresh overtaken by a selection change.
+  const pending = [], order = [];
+  const guarded = createSnapshotLoader(s => order.push(s), (url, options) => new Promise(resolve => pending.push({ url, options, resolve })));
+  const late = guarded.refresh(LEAGUE, { userId: null }, { mode: "due" });
+  const other = guarded.load(OTHER, { userId: null });
+  assert.equal(pending[0].options.signal.aborted, true);
+  pending[1].resolve({ ok: true, json: async () => ({ league: { league_id: OTHER }, coverage: { input_revision: R1 } }) }); await other;
+  const count = order.length; pending[0].resolve({ ok: true, json: async () => body(null, R3) }); await late;
+  assert.equal(order.length, count); assert.equal(order.at(-1).data.league.league_id, OTHER);
+});
+
+/** Refresh API caller over one coordinator; mode is manual unless given. */
+function refreshCaller(u, now) {
+  const provider = new SleeperProvider({ inputs: coordinator(u, now) });
+  return (mode = "manual") => handleRefreshRequest(new Request("http://localhost/api/refresh", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ league: LEAGUE, user: "spectator", mode }) }), { leagueIds: [], resolveProvider: () => provider }).then(r => r.json());
+}
+/** Asserts the hint is positive and exact while `name` is deferred, then that it is attempted exactly at eligibility. */
+async function hintMatchesEligibility({ post, now, u, name, path, mode, wait, recover }) {
+  const failed = await post(mode);
+  assert.equal(failed.retry_after_seconds, wait, `${name}: hint equals the eligibility wait`);
+  let elapsed = 0;
+  for (const step of [Math.min(10, wait - 1), wait - 1]) {
+    now.advance(step - elapsed); elapsed = step;
+    const before = u.count(path), r = await post(mode);
+    assert.equal(u.count(path), before, `${name}: no attempt before eligibility`);
+    assert.ok(r.deferred.includes(name)); assert.ok(r.retry_after_seconds > 0, `${name}: never claims ready early`);
+    assert.equal(r.retry_after_seconds, wait - step);
+  }
+  now.advance(wait - elapsed); recover();
+  const before = u.count(path), ok = await post(mode);
+  assert.equal(u.count(path), before + 1, `${name}: attempted exactly when eligible`);
+  return { failed, ok };
+}
+
+test("Codex delta 2A: manual roster failure hint is the manual cooldown and recovery runs exactly then", async () => {
+  const u = upstream(), now = clock(), post = refreshCaller(u, now);
+  await post(); now.advance(REFRESH_POLICY.min_force_interval_seconds); u.fail.set("/rosters", new Error("outage"));
+  const { failed, ok } = await hintMatchesEligibility({ post, now, u, name: "rosters", path: "/rosters", mode: "manual", wait: REFRESH_POLICY.min_force_interval_seconds, recover: () => u.fail.clear() });
+  assert.equal(failed.status, "failed"); assert.equal(ok.status, "ok"); assert.equal(ok.retry_after_seconds, null);
+});
+
+test("Codex delta 2B: due-mode roster failure hint is the failure backoff", async () => {
+  const u = upstream(), now = clock(), post = refreshCaller(u, now);
+  await post("due"); now.advance(REFRESH_POLICY.stale_after_seconds.dynamic); u.fail.set("/rosters", new Error("outage"));
+  const { failed, ok } = await hintMatchesEligibility({ post, now, u, name: "rosters", path: "/rosters", mode: "due", wait: BACKOFF, recover: () => u.fail.clear() });
+  assert.equal(failed.status, "failed"); assert.equal(ok.status, "ok");
+});
+
+test("Codex delta 2C: catalog failure reflects the 30 s backoff, not the 10 s manual cooldown", async () => {
+  const u = upstream(), now = clock(), post = refreshCaller(u, now);
+  await post(); now.advance(DAY); u.exact.set("/players/nfl", new Error("outage"));
+  const { failed, ok } = await hintMatchesEligibility({ post, now, u, name: "players", path: "/players/nfl", mode: "manual", wait: BACKOFF, recover: () => u.exact.clear() });
+  assert.equal(failed.status, "failed"); assert.equal(ok.status, "ok");
+});
+
+test("Codex delta 2D: a Retry-After longer than cooldown/backoff wins and nothing is attempted early", async () => {
+  const u = upstream(), now = clock(), post = refreshCaller(u, now);
+  await post(); now.advance(REFRESH_POLICY.min_force_interval_seconds);
+  u.fail.set("/rosters", new SleeperResourceError("RATE_LIMITED", { status: 429, retryAfter: 120 }));
+  const { failed } = await hintMatchesEligibility({ post, now, u, name: "rosters", path: "/rosters", mode: "manual", wait: 120, recover: () => u.fail.clear() });
+  assert.equal(failed.snapshot.coverage.freshness.resources.rosters.error.retry_after_seconds, 120);
+  // Due mode honours the same Retry-After.
+  const v = upstream(), later = clock(), due = refreshCaller(v, later);
+  await due("due"); later.advance(REFRESH_POLICY.stale_after_seconds.dynamic);
+  v.fail.set("/rosters", new SleeperResourceError("RATE_LIMITED", { status: 429, retryAfter: 120 }));
+  assert.equal((await due("due")).retry_after_seconds, 120);
+});
+
+test("Codex delta 2E: with one failed core source, the hint follows that blocker, not the held not_promoted candidates", async () => {
+  // Failed catalog (30 s backoff) + fetched rosters/state held back: the 10 s roster cooldown must not set the hint.
+  const u = upstream(), now = clock(), post = refreshCaller(u, now);
+  await post(); now.advance(DAY); u.rosters = moved(); u.exact.set("/players/nfl", new Error("outage"));
+  const held = await post();
+  assert.equal(held.snapshot.coverage.freshness.resources.rosters.last_attempt_status, "not_promoted");
+  assert.equal(held.status, "failed"); assert.equal(held.retry_after_seconds, BACKOFF);
+  now.advance(REFRESH_POLICY.min_force_interval_seconds);
+  const mid = await post();
+  assert.equal(mid.retry_after_seconds, BACKOFF - REFRESH_POLICY.min_force_interval_seconds, "rosters being re-fetchable does not make recovery ready");
+  now.advance(BACKOFF - REFRESH_POLICY.min_force_interval_seconds); u.exact.clear();
+  const ok = await post(); assert.equal(ok.status, "ok"); assert.notEqual(ok.input_revision, held.input_revision); assert.deepEqual(ok.unresolved, []);
+  // Inverse: failed rosters + a fresh catalog candidate held back: rosters' 10 s cooldown drives it, not the catalog.
+  const v = upstream(), t = clock(), call = refreshCaller(v, t);
+  await call(); t.advance(DAY); v.exact.set("/players/nfl", await newCatalog()); v.fail.set("/rosters", new Error("outage"));
+  const blocked = await call();
+  assert.equal(blocked.snapshot.coverage.freshness.resources.players.last_attempt_status, "not_promoted");
+  assert.equal(blocked.retry_after_seconds, REFRESH_POLICY.min_force_interval_seconds);
+  // Several failed core sources: recovery waits for the last one to become eligible.
+  const w = upstream(), c = clock(), both = refreshCaller(w, c);
+  await both(); c.advance(DAY); w.exact.set("/players/nfl", new Error("outage")); w.fail.set("/rosters", new Error("outage"));
+  assert.equal((await both()).retry_after_seconds, BACKOFF);
+});

@@ -48,6 +48,11 @@ Status values: `proposed` · `ready` · `in-progress` · `in-review` · `blocked
     5. P2 false success: a deferred immediate retry returned `ok`/`refreshed`. Fix: `status` follows all unresolved committed-bundle resources; additive `unresolved`, `deferred`, `retry_after_seconds`; the client keeps the error with a retry hint until a real success.
     - Files: `lib/sources/sleeper/inputs.js`, `lib/refresh-api.js`, `lib/snapshot-loader.js`, `app/dashboard/DashboardShell.js`, `test/sleeper-refresh.test.js`, `docs/decisions/0008-sleeper-refresh.md`, `ARCHITECTURE.md`, this file.
     - Tests: 9 new regression tests (four core-atomicity combinations, R2 client vs R1 instance, 16 busy leagues + 10 concurrent requests for a 17th, waiting forced caller, more than 16 pins with bounded LRU, deferred retry), two existing assertions updated to the new policy/message. `pnpm test` 338 pass / 0 fail; `pnpm build` succeeded; `pnpm test:ui` 36 passed (same local Chromium config); `git diff --check` clean.
+  - Round 3 (Codex delta review of `4a5aa2d`, two remaining issues; same branch/PR):
+    1. Automatic `due` refresh could replace a held revision with another instance's unrelated one. Fix: `snapshot-loader.refresh` in `due` mode with a held revision H accepts only `input_revision === H` or `previous_input_revision === H`; otherwise it keeps H visible and remembered and shows the sync mismatch. Manual sync may still switch; cold accepts normally. No revision ordering, no persistence.
+    2. `retry_after_seconds` assumed the 10 s manual cooldown even under failure backoff, Retry-After or catalog rules. Fix: one `eligibility()` rule in the coordinator backs both `shouldFetch` and the hint (same thresholds, unchanged values); only failed sources set it (latest failed core blocker, else earliest failed optional); `null` while in flight.
+    - Files: `lib/sources/sleeper/inputs.js`, `lib/snapshot-loader.js`, `test/sleeper-refresh.test.js`, `docs/decisions/0008-sleeper-refresh.md`, `ARCHITECTURE.md`, this file.
+    - Tests: 6 new (due continuity cases 1-5 plus cold and stale-response guard; retry timing A-E). `pnpm test` 344 pass / 0 fail; `pnpm build` succeeded; `pnpm test:ui` 36 passed (local Chromium config); `git diff --check` clean.
 - Blockers: none.
 
 ### AGENT-SETUP — Shared multi-agent documentation
