@@ -43,7 +43,8 @@ test("optional outages are explicit; core outages fail rather than invent data",
   assert.equal(full.warnings.length, 3);
   assert.equal(full.recent_transactions.length, 1);
   assert.deepEqual(compactSnapshot(full).warnings, full.warnings);
-  await assert.rejects(buildLeagueSnapshot("A", { fetchData: fixtureFetch({ fail: ["/rosters"] }) }), /outage/);
+  // Upstream errors are sanitized (SLEEPER-REFRESH-01): the resource and a fixed code, never the raw error text.
+  await assert.rejects(buildLeagueSnapshot("A", { fetchData: fixtureFetch({ fail: ["/rosters"] }) }), error => error.code === "UPSTREAM_UNAVAILABLE" && /Sleeper rosters data is unavailable/.test(error.message) && !/outage/.test(error.message));
 });
 
 test("old-season leagues do not masquerade as current-week matchups", async () => {
