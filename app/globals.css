@@ -129,6 +129,8 @@ summary { display: list-item; padding: 12px 0; font-size: .875rem; }
 .appWorkspace, .routeContent, .routeContent section, .routeContent article { min-width: 0; }
 .shellHeader { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; }
 .mobileBrand, .mobileNav { display: none; }
+.syncStatus { font-size: 13px; margin: 0 0 8px; overflow-wrap: anywhere; }
+.syncStatus .syncFailed { color: var(--warn, inherit); }
 .routeContent { width: 100%; margin: 0; padding: 20px 0 40px; outline: none; }
 .routeContent h1 { font-size: 1.9rem; line-height: 1.15; letter-spacing: -.035em; margin: 0 0 16px; }
 .routeContent h2 { font-size: 1.2rem; margin-bottom: 12px; }

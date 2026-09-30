@@ -30,6 +30,7 @@ Enter a username in Accounts, leagues and season. The app resolves and remembers
 - Shows standings, ordered starter slots, separate bench/IR/taxi sections, available players and recent transactions.
 - Preserves draft picks, FAAB transfers, zero-dollar waiver bids and pending transaction status.
 - Prevents stale requests from overwriting the selected league or a newer refresh.
+- Refresh (header button) asks the server to re-fetch current league state from Sleeper (`POST /api/refresh`) while the current data stays on screen; a failed refresh keeps the last good data and offers Retry. While the tab is visible, resources past their refresh window are refreshed every 5 minutes. The header shows when the league last synced and which resources are stale or failed. See ADR 0008.
 - Pulls current-week matchups into the API snapshot.
 - Includes Sleeper's 24-hour trending adds when those players are actually available in the league.
 - Exposes `/api/snapshot?league=<league_id>&compact=1` as a versioned compact endpoint, with explicit coverage, truncation and partial-data warnings.
@@ -60,11 +61,11 @@ Use Node.js 22.13 or newer and pnpm 11.19.0 (pinned in `package.json`). The comm
 - `rosters`: every team, with raw roster settings, waiver priority and FAAB used (null means unavailable; zero is preserved). `starters` is an ordered list of `{slot, player_id}` with null IDs for empty slots. `bench`, `ir`, and `taxi` contain player IDs. No roster is truncated. No remaining-FAAB figure is inferred from incomplete transfer history.
 - `free_agents`: positional lists of player IDs and 24-hour trending counts; 35 per position in compact mode, 100 in full mode. Ranking uses Sleeper search rank, then trending adds, then player ID; this is not a projection or recommendation score.
 - `standings`, `recent_transactions`, `current_matchups`: preserve records/points, transaction assets/status, and matchup IDs, player/start order, scores and commissioner overrides. Transaction picks retain original roster, previous owner and new owner; FAAB transfers retain sender, receiver and amount. `matchup_week` identifies the requested week.
-- `coverage`: the current and previous transaction weeks, included statuses (complete/pending), trending upstream limit (100), daily player-cache interval, and waiver-policy identifier. This is recent activity, not full league history or a complete future-pick inventory.
+- `coverage`: the current and previous transaction weeks, included statuses (complete/pending), trending upstream limit (100), daily player-cache interval, waiver-policy identifier, `input_revision` (content revision of the committed Sleeper inputs) and `freshness` (per-resource last success, last attempt, status and sanitized error; process-local, ADR 0008). This is recent activity, not full league history or a complete future-pick inventory.
 - `truncation`: total, returned, omitted and limit for each waiver position, recent transactions (40), and trending available (25). Totals describe the fetched coverage after filtering/deduplication; they do not claim unseen history. UI lists show 20 free agents and 12 transactions; the snapshot includes the documented larger limits.
 - `partial` and `warnings`: failures of trending, weekly transactions or matchups are visible rather than silently reported as empty activity. Missing metadata and season mismatches also warn. Essential league/roster/player failures return HTTP 502. An older league does not receive current-season matchup/transaction claims.
 
-The full view retains expanded player objects, `my_roster`, `all_players`, and `reserve` (the compact name is `ir`). Both views include the same coverage/warning semantics. `generated_at` is assembly time, not proof every upstream record changed then; Sleeper responses are cached independently.
+The full view retains expanded player objects, `my_roster`, `all_players`, and `reserve` (the compact name is `ir`). Both views include the same coverage/warning semantics. `generated_at` is assembly time, not proof every upstream record changed then; per-resource sync times are in `coverage.freshness`.
 
 ## Waiver eligibility
 

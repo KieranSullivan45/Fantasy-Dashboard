@@ -44,7 +44,9 @@ export default function TradeView() {
   const [picks, setPicks] = useViewState("tradePicks", { a: [], b: [] });
   const [result, setResult] = useState({ key: null, basis: null, loading: false, error: "", data: null });
   const [loader] = useState(() => createTradeLoader(setResult));
-  useEffect(() => () => loader.cancel(), [loader]);
+  // A refresh that changes the committed inputs changes the basis: abandon any in-flight evaluation of the old one.
+  const currentBasis = data ? decisionBasis(data) : null;
+  useEffect(() => () => loader.cancel(), [loader, currentBasis]);
   if (!data) return <><h1>Trade</h1><DataRequired /></>;
 
   const rosters = data.rosters, find = id => rosters.find(r => String(r.roster_id) === id) || null;

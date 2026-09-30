@@ -43,6 +43,7 @@ test("full roster sections, empty slots, picks and FAAB render for both teams", 
 test("rapid league switching hides old data and ignores superseded responses", async ({ page }) => {
   const pending = [];
   await page.route("**/api/snapshot?**", route => { pending.push(route); });
+  await page.route("**/api/refresh", route => { pending.push(route); });
   await page.goto("/");
   await expect.poll(() => pending.length).toBe(1);
   await pending[0].fulfill({ json: await snapshot(A) });
