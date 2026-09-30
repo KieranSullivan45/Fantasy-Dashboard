@@ -97,7 +97,7 @@ Status values: `proposed` · `ready` · `in-progress` · `in-review` · `blocked
 - Blockers: V04-01.
 
 ### DOCS-CLEANUP-01 — Documentation drift cleanup
-- Status: in-review
+- Status: done (merged to `main` via PR #10 as `1b0400c248783064f56612963ff48c7181bfeff2`)
 - Owner: Claude Code
 - Reviewer: repository owner
 - Branch: `claude/project-thread-0owiyo` (branch name set by the Claude project session, not the `<type>/<task-id>-<slug>` convention)
@@ -105,7 +105,7 @@ Status values: `proposed` · `ready` · `in-progress` · `in-review` · `blocked
 - Allowed scope: documentation only: `TASKS.md`, `AGENTS.md` (source-of-truth note), `ARCHITECTURE.md`, `PROJECT_SPEC.md`, ADR 0001 status, ADR 0005 formatting/milestone naming. No executable code, tests, config or dependencies.
 - Acceptance criteria: merged tasks marked done; existing milestone numbering kept (V05-ESPN-05 live Flaim transport, V05-ESPN-06 OAuth, V05-ESPN-07 dashboard UI); the next real-league step named "First Real ESPN Load / Activation Validation" consistently; source of truth stated; `git diff --check` clean.
 - Handoff notes: documentation only, no executable behavior changed, so `pnpm test`/`pnpm build` were not run. `git diff --check` clean.
-- Blockers: owner review and merge.
+- Blockers: none.
 
 ### EVAL-PROTOCOL-01 — Evaluation Protocol v1 (docs only)
 - Status: done (merged to `main` via PR #13; protocol v1 effective at the merge commit time)
@@ -135,7 +135,7 @@ Status values: `proposed` · `ready` · `in-progress` · `in-review` · `blocked
 - Blockers: none.
 
 ### ESPN-PENDING-01 — Reconcile stale pending ESPN transactions
-- Status: in-review (PR #12; start approved by the repository owner on 2026-09-29)
+- Status: done (merged to `main` via PR #12 as `2183b77bb3582fa01e104ce2e1d9b06f942de921`; start approved by the repository owner on 2026-09-29)
 - Owner: Claude Code
 - Reviewer: repository owner / ChatGPT
 - Branch: `claude/espn-pending-01-myn6tg`, created from `origin/main` at `1b0400c` (branch name set by the Claude project session, not the `<type>/<task-id>-<slug>` convention), then merged with `main` at `fbbd1cd` (PR #11)
@@ -155,7 +155,7 @@ Status values: `proposed` · `ready` · `in-progress` · `in-review` · `blocked
   - Codex review of PR #12 at `1d3cff7` (two reproduced blockers, fixed on the same branch): (1) a `failed` waiver row that belongs only to another team no longer hides the owner's pending claim (another team succeeding still fails closed); (2) team identity now also comes from the stable team ids on normalized trade sides, and matching player evidence with no available team identity fails closed as ambiguous instead of unrelated. Same-provider-id matching now honors the timestamp rule (older row is not an outcome; equal or missing is ambiguous). Known limit: the Flaim mapper reads `trade_sides` only for completed `trade` rows, so a decline, veto or uphold row carries team identity only through its top-level `team_ids`; without them it fails closed on player overlap.
   - Tests: `pnpm test` 307 pass / 0 fail (296 before + 11 new; existing tests unmodified). `pnpm build` succeeded. `pnpm test:ui` 34 passed (run with an equivalent Playwright config pointing at the installed Chromium, because the sandbox browser build did not match the pinned version; no repo file changed). `git diff --check` clean. CI on the PR head was green.
   - Residual ambiguity: the transaction window is bounded and possibly truncated, so a resolving row outside it cannot be seen. A genuine pending item is hidden when a later row for the same team and player cannot be told apart from its outcome. No provider link between a row and its outcome is available until live transport exposes one.
-- Blockers: owner review and merge.
+- Blockers: none.
 
 ### V05-ESPN-04 — Local private ESPN mode (saved Flaim bundle)
 - Status: done (merged to `main` via PR #9 as `f3423ea`)
