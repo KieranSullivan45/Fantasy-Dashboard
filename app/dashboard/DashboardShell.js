@@ -32,11 +32,11 @@ export function SyncStatus({ data }) {
   if (!resources) return null;
   const at = Date.now(), rows = Object.entries(resources).map(([name, r]) => ({ name, ...r,
     stale: !r.last_success_at || at - Date.parse(r.last_success_at) >= r.stale_after_seconds * 1000 }));
-  const rosters = resources.rosters, stale = rows.filter(r => r.stale), failed = rows.filter(r => r.last_attempt_status === "failed");
+  const rosters = resources.rosters, stale = rows.filter(r => r.stale), failed = rows.filter(r => ["failed", "not_promoted"].includes(r.last_attempt_status));
   return <div className="syncStatus muted" aria-label="Data freshness">
     {rosters?.last_success_at ? <span>League synced {clock(rosters.last_success_at)} ({ago((at - Date.parse(rosters.last_success_at)) / 1000)})</span> : <span>League sync time unknown</span>}
     {stale.length ? <span className="syncStale"> · Older than its refresh window: {stale.map(r => r.name).join(", ")}</span> : null}
-    {failed.length ? <span className="syncFailed"> · Last attempt failed, previous data kept: {failed.map(r => `${r.name} (${r.error?.message || "unavailable"})`).join("; ")}</span> : null}
+    {failed.length ? <span className="syncFailed"> · Not updated, previous data kept: {failed.map(r => `${r.name} (${r.error?.message || "unavailable"})`).join("; ")}</span> : null}
   </div>;
 }
 export default function DashboardShell({ children }) {
@@ -83,7 +83,7 @@ export default function DashboardShell({ children }) {
         {selection.leagueId && !data && (!current || current.loading) ? <p className="status" role="status">Syncing live Sleeper data…</p> : null}
         {data && refreshing ? <p className="status" role="status">Refreshing Sleeper data… current league data stays visible.</p> : null}
         {current?.error ? <p className="status error" role="alert">{current.error} <button type="button" onClick={() => loader.refresh(selection.leagueId, selection)}>Retry</button></p> : null}
-        {data && current.refreshError ? <p className="status error" role="alert">Refresh failed: {current.refreshError} Showing the last good league data. <button type="button" disabled={refreshing} onClick={() => loader.refresh(selection.leagueId, selection)}>Retry</button></p> : null}
+        {data && current.refreshError ? <p className="status error" role="alert">{current.mismatch ? "Sync mismatch:" : "Refresh failed:"} {current.refreshError} Showing the last good league data. <button type="button" disabled={refreshing} onClick={() => loader.refresh(selection.leagueId, selection)}>Retry</button></p> : null}
         {data ? <SyncStatus data={data} /> : null}
         {data?.partial ? <details className="status" role="status"><summary>Some league data is unavailable</summary>{data.warnings.map((w,i) => <p key={i}>{w.message}</p>)}</details> : null}
         <main id="view" ref={main} tabIndex={-1} className="routeContent">{children}</main>

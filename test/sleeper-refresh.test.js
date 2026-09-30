@@ -34,10 +34,11 @@ const moved = () => { const r = structuredClone(ROSTERS); r[1].players.push("10"
 function clock(start = T0) { let t = start; const now = () => t; now.advance = seconds => { t += seconds * 1000; }; return now; }
 /** Mutable SYNTHETIC Sleeper upstream: `rosters` override, `fail` map (path fragment -> Error or value), optional gates. */
 function upstream(base = fixtureFetch()) {
-  const u = { calls: [], fail: new Map(), rosters: null, gates: new Map() };
+  const u = { calls: [], fail: new Map(), rosters: null, gates: new Map(), exact: new Map() };
   u.fetchData = async path => {
     u.calls.push(path);
     for (const [part, gate] of u.gates) if (path.includes(part)) await gate;
+    if (u.exact.has(path)) { const outcome = u.exact.get(path); if (outcome instanceof Error) throw outcome; return structuredClone(outcome); }
     for (const [part, outcome] of u.fail) if (path.includes(part)) { if (outcome instanceof Error) throw outcome; return structuredClone(outcome); }
     if (path.endsWith("/rosters") && u.rosters) return structuredClone(u.rosters);
     return structuredClone(await base(path));
@@ -72,8 +73,8 @@ test("A/16: manual refresh is bounded by a cooldown and memory holds a bounded, 
   assert.equal(u.count("/rosters"), 2);
   assert.equal(u.calls.filter(p => p === "/players/nfl").length, 1, "manual refresh does not re-download the catalog");
   for (const id of ["100000001", "100000002", "100000003", "100000004", "100000005"]) await inputs.ensure(id);
-  const { leagues, league_ids } = inputs.stats();
-  assert.ok(leagues <= 3); assert.ok(league_ids.includes("100000001"), "installation (pinned) league is not evicted");
+  const { unpinned, league_ids } = inputs.stats();
+  assert.ok(unpinned <= 3, "arbitrary (unpinned) leagues stay bounded"); assert.ok(league_ids.includes("100000001"), "installation (pinned) league is not evicted");
 });
 
 test("B: a failed refresh releases the in-flight slot and a later retry succeeds", async () => {
@@ -449,7 +450,7 @@ test("O: refresh keeps same-selection data, and late refresh/load results cannot
   pending[3].resolve({ ok: false, json: async () => ({ error: "Sleeper league data is unavailable." }) }); await failing;
   assert.equal(states.at(-1).data.league.league_id, "B"); assert.match(states.at(-1).refreshError, /unavailable/); assert.equal(states.at(-1).error, "");
   const retry = loader.refresh("B", { userId: null }); ok(4, { schema_version: "refresh-1", status: "failed", snapshot: snap("B") }); await retry;
-  assert.match(states.at(-1).refreshError, /last good/);
+  assert.match(states.at(-1).refreshError, /could not be refreshed/);
   const later = loader.refresh("B", { userId: null }); ok(5, { schema_version: "refresh-1", status: "ok", snapshot: snap("B") }); await later;
   assert.equal(states.at(-1).refreshError, ""); assert.ok(states.at(-1).receivedAt);
   // A refresh with nothing retained behaves like a first load: errors are shown as errors.
@@ -524,4 +525,189 @@ test("refresh request envelope is strict, bounded and sanitized", async () => {
   const kept = await call();
   assert.equal(kept.status, "failed"); assert.equal(kept.served, "last_known_good"); assert.equal(kept.input_revision, good.input_revision);
   assert.deepEqual(kept.snapshot.rosters, good.snapshot.rosters);
+});
+
+// ---------------------------------------------------------------- Codex first-pass regressions
+
+const DAY = 24 * 60 * 60, BACKOFF = REFRESH_POLICY.failure_backoff_seconds;
+const newCatalog = async () => { const players = structuredClone(await fixtureFetch()("/players/nfl")); players["1"] = { ...players["1"], team: "KC" }; return players; };
+const newState = async () => ({ ...(await fixtureFetch()("/state/nfl")), week: 4, leg: 4 });
+/** One core-atomicity scenario: after R1, `change` stages new candidates, then `recover` lets the failing one succeed. */
+async function coreScenario({ advance, change, recover, failing }) {
+  const u = upstream(), now = clock(), inputs = coordinator(u, now, { isPinned: () => true });
+  const r1 = await inputs.ensure(LEAGUE);
+  now.advance(advance); await change(u);
+  const before = u.calls.length;
+  const held = await inputs.ensure(LEAGUE, { force: true });
+  assert.equal(held.revision, r1.revision, "a failed core candidate keeps revision R1");
+  assert.equal(held.bundle, r1.bundle, "the committed core is exactly R1 (same immutable bundle)");
+  assert.deepEqual(u.calls.slice(before).filter(p => /matchups\/4|transactions\/4/.test(p)), [], "activity paths are not switched to an uncommitted week");
+  assert.equal(held.bundle.matchup_week, 3);
+  assert.ok(held.report.unresolved.includes(failing), `${failing} is reported unresolved`);
+  // Another league sharing the same process-wide candidates does not change the first league's committed core either.
+  await inputs.ensure(OTHER).catch(() => {});
+  assert.equal((await inputs.ensure(LEAGUE)).bundle, r1.bundle);
+  recover(u); now.advance(BACKOFF);
+  const r2 = await inputs.ensure(LEAGUE, { force: true });
+  assert.notEqual(r2.revision, r1.revision, "once every core candidate succeeds one coherent R2 promotes");
+  assert.deepEqual(r2.report.unresolved, []);
+  return { r1, r2, held, u };
+}
+
+test("Codex 1a: new NFL state + failed rosters keeps R1 core and activity week, then promotes R2 coherently", async () => {
+  const { r2, held, u } = await coreScenario({ advance: 10, failing: "rosters",
+    change: async u => { u.exact.set("/state/nfl", await newState()); u.fail.set("/rosters", new Error("outage")); u.rosters = moved(); },
+    recover: u => u.fail.delete("/rosters") });
+  assert.equal(resource(held, "state").last_attempt_status, "not_promoted");
+  assert.equal(resource(held, "state").error.code, "NOT_PROMOTED");
+  assert.equal(resource(held, "rosters").last_attempt_status, "failed");
+  assert.equal(r2.bundle.state.week, 4); assert.equal(r2.bundle.matchup_week, 4); assert.deepEqual(r2.bundle.rosters, moved());
+  assert.ok(u.count("/matchups/4") >= 1, "the new week is used only after the new state is committed");
+});
+
+test("Codex 1b: new catalog + failed rosters keeps R1, then promotes R2 with both", async () => {
+  const { r1, r2, held } = await coreScenario({ advance: DAY, failing: "rosters",
+    change: async u => { u.exact.set("/players/nfl", await newCatalog()); u.fail.set("/rosters", new Error("outage")); u.rosters = moved(); },
+    recover: u => u.fail.delete("/rosters") });
+  assert.equal(held.bundle.players, r1.bundle.players);
+  assert.equal(resource(held, "players").last_attempt_status, "not_promoted");
+  assert.equal(r2.bundle.players["1"].team, "KC"); assert.deepEqual(r2.bundle.rosters, moved());
+});
+
+test("Codex 1c: new rosters + failed NFL state keeps R1 rosters, then promotes R2", async () => {
+  const { r2, held } = await coreScenario({ advance: 10, failing: "state",
+    change: async u => { u.rosters = moved(); u.exact.set("/state/nfl", new Error("outage")); },
+    recover: u => u.exact.delete("/state/nfl") });
+  assert.equal(resource(held, "rosters").last_attempt_status, "not_promoted");
+  assert.deepEqual(r2.bundle.rosters, moved());
+});
+
+test("Codex 1d: new rosters + failed catalog keeps R1 rosters, then promotes R2", async () => {
+  const { r2, held } = await coreScenario({ advance: DAY, failing: "players",
+    change: async u => { u.rosters = moved(); u.exact.set("/players/nfl", new Error("outage")); },
+    recover: u => u.exact.delete("/players/nfl") });
+  assert.equal(resource(held, "rosters").last_attempt_status, "not_promoted");
+  assert.equal(resource(held, "players").last_attempt_status, "failed");
+  assert.deepEqual(r2.bundle.rosters, moved());
+});
+
+test("Codex 2: an R2 client never accepts an R1 answer from another instance, and a sync resolves it", async () => {
+  const r1 = await buildLeagueSnapshot(LEAGUE, { inputs: await coordinator(upstream()).ensure(LEAGUE), userId: null });
+  const u2 = upstream(); u2.rosters = moved();
+  const r2 = await buildLeagueSnapshot(LEAGUE, { inputs: await coordinator(u2).ensure(LEAGUE), userId: null });
+  assert.notEqual(r1.coverage.input_revision, r2.coverage.input_revision);
+  const states = [], requests = [];
+  let answer = null;
+  const loader = createSnapshotLoader(s => states.push(s), async (url, options) => { requests.push({ url, options }); return { ok: true, json: async () => answer }; });
+  answer = { schema_version: "refresh-1", status: "ok", snapshot: r2 };
+  await loader.refresh(LEAGUE, { userId: null });
+  assert.equal(states.at(-1).data.coverage.input_revision, r2.coverage.input_revision);
+  // The next read names R2 and lands on an instance that still holds R1 (older or newer is irrelevant: no ordering).
+  answer = r1;
+  await loader.load(LEAGUE, { userId: null });
+  assert.equal(new URL(requests.at(-1).url, "http://x").searchParams.get("rev"), r2.coverage.input_revision);
+  const shown = states.at(-1);
+  assert.equal(shown.data.coverage.input_revision, r2.coverage.input_revision, "R1 is not published; same-selection R2 data is retained");
+  assert.equal(shown.mismatch, true); assert.match(shown.refreshError, /different sync/); assert.equal(shown.error, "");
+  assert.ok(!states.some(s => s.data?.coverage?.input_revision === r1.coverage.input_revision), "R1 was never published");
+  await loader.load(LEAGUE, { userId: null });
+  assert.equal(new URL(requests.at(-1).url, "http://x").searchParams.get("rev"), r2.coverage.input_revision, "the remembered revision is not overwritten");
+  // Manual/automatic sync (POST) is the explicit resolution: its committed result is accepted and remembered.
+  answer = { schema_version: "refresh-1", status: "ok", snapshot: r1 };
+  await loader.refresh(LEAGUE, { userId: null });
+  assert.equal(states.at(-1).data.coverage.input_revision, r1.coverage.input_revision); assert.equal(states.at(-1).refreshError, ""); assert.ok(!states.at(-1).mismatch);
+  answer = r1; await loader.load(LEAGUE, { userId: null });
+  assert.equal(states.at(-1).data.coverage.input_revision, r1.coverage.input_revision);
+  // Different selection with a remembered revision and no retained data: an error, never the mismatched data.
+  const cold = [], coldLoader = createSnapshotLoader(s => cold.push(s), async () => ({ ok: true, json: async () => (cold.length > 2 ? r1 : { schema_version: "refresh-1", status: "ok", snapshot: r2 }) }));
+  await coldLoader.refresh(LEAGUE, { userId: null }); await coldLoader.load(OTHER, { userId: null }).catch(() => {});
+  await coldLoader.load(LEAGUE, { userId: null });
+  assert.equal(cold.at(-1).data, null); assert.match(cold.at(-1).error, /different sync/);
+});
+
+test("Codex 3: sixteen busy leagues refuse a seventeenth before any upstream work; idle ones make room single-flight", async () => {
+  const u = upstream(), g = gate(), inputs = coordinator(u, clock());
+  const ids = Array.from({ length: 16 }, (_, i) => String(200000000 + i)), NEW = "299999999";
+  u.gates.set("/rosters", g.promise);
+  const held = ids.map(id => inputs.ensure(id));
+  const refused = await Promise.allSettled(Array.from({ length: 10 }, () => inputs.ensure(NEW)));
+  assert.ok(refused.every(r => r.status === "rejected" && r.reason.code === "CAPACITY"), "no active entry is evicted or untracked");
+  assert.equal(u.calls.filter(p => p.includes(NEW)).length, 0, "admission happens before upstream work");
+  assert.deepEqual(inputs.stats().league_ids, ids);
+  g.open(); await Promise.all(held);
+  const before = u.calls.length;
+  const admitted = await Promise.all(Array.from({ length: 10 }, () => inputs.ensure(NEW)));
+  assert.equal(new Set(admitted.map(a => a.revision)).size, 1);
+  assert.equal(u.calls.slice(before).filter(p => p === `/league/${NEW}/rosters`).length, 1, "concurrent requests for an admitted league are single-flight");
+  assert.equal(inputs.stats().leagues, 16); assert.ok(inputs.stats().league_ids.includes(NEW)); assert.ok(!inputs.stats().league_ids.includes(ids[0]), "the least recently used idle league was evicted");
+  // The capacity refusal reaches the refresh route as a retryable 503, no-store.
+  const hold = gate(), busyUp = upstream(); busyUp.gates.set("/rosters", hold.promise);
+  const tight = coordinator(busyUp, clock(), { policy: { ...REFRESH_POLICY, max_leagues: 1 } }), provider = new SleeperProvider({ inputs: tight });
+  const first = tight.ensure(OTHER);
+  const response = await handleRefreshRequest(new Request("http://localhost/api/refresh", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ league: LEAGUE, user: "spectator" }) }), { leagueIds: [], resolveProvider: () => provider });
+  assert.equal(response.status, 503); assert.equal(response.headers.get("cache-control"), "no-store"); assert.equal((await response.json()).code, "CAPACITY");
+  hold.open(); await first;
+});
+
+test("Codex 3: a forced caller waiting behind a cycle keeps its league from eviction", async () => {
+  const u = upstream(), g = gate(), inputs = coordinator(u, clock(), { policy: { ...REFRESH_POLICY, max_leagues: 1 } });
+  u.gates.set("/rosters", g.promise);
+  const plain = inputs.ensure(LEAGUE), forced = inputs.ensure(LEAGUE, { force: true });
+  g.open(); await plain;
+  await assert.rejects(inputs.ensure(OTHER), e => e.code === "CAPACITY", "the waiting forced refresh is still active");
+  await forced;
+  assert.deepEqual(inputs.stats().league_ids, [LEAGUE]);
+});
+
+test("Codex 4: pins sit outside the arbitrary bound, are never evicted, and unpinned LRU still works", async () => {
+  const pins = Array.from({ length: 20 }, (_, i) => String(300000000 + i)), arbitrary = Array.from({ length: 5 }, (_, i) => String(400000000 + i));
+  const u = upstream(), inputs = coordinator(u, clock(), { policy: { ...REFRESH_POLICY, max_leagues: 3 }, isPinned: id => pins.includes(id) });
+  for (const id of pins) await inputs.ensure(id);
+  for (const id of arbitrary.slice(0, 3)) await inputs.ensure(id);
+  await inputs.ensure(arbitrary[0]); // touch: most recently used
+  for (const id of arbitrary.slice(3, 5)) await inputs.ensure(id);
+  const { league_ids, unpinned, leagues } = inputs.stats();
+  assert.ok(pins.every(id => league_ids.includes(id)), "every pin is retained, beyond the arbitrary bound");
+  assert.equal(unpinned, 3); assert.equal(leagues, 23);
+  assert.deepEqual(league_ids.filter(id => !pins.includes(id)).sort(), [arbitrary[0], arbitrary[3], arbitrary[4]].sort(), "least recently used arbitrary leagues are evicted first");
+  // Active arbitrary entries are protected: with all three busy, a fourth arbitrary league is refused, a pin is not.
+  const g = gate(); u.gates.set("/rosters", g.promise);
+  const busy = [arbitrary[0], arbitrary[3], arbitrary[4]].map(id => inputs.ensure(id, { force: true }));
+  await assert.rejects(inputs.ensure("499999999"), e => e.code === "CAPACITY");
+  const extraPin = "300000099"; pins.push(extraPin);
+  const pinned = inputs.ensure(extraPin);
+  g.open(); await Promise.all([...busy, pinned]);
+  assert.ok(inputs.stats().league_ids.includes(extraPin)); assert.equal(inputs.stats().unpinned, 3);
+});
+
+test("Codex 5: an immediate retry that is deferred stays failed; a retry after the interval succeeds and clears it", async () => {
+  const u = upstream(), now = clock(), provider = new SleeperProvider({ inputs: coordinator(u, now) });
+  const post = () => handleRefreshRequest(new Request("http://localhost/api/refresh", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ league: LEAGUE, user: "spectator" }) }), { leagueIds: [], resolveProvider: () => provider }).then(r => r.json());
+  const r1 = await post(); assert.equal(r1.status, "ok"); assert.deepEqual(r1.unresolved, []);
+  u.fail.set("/rosters", new Error("outage")); u.rosters = moved(); now.advance(REFRESH_POLICY.min_force_interval_seconds);
+  const failed = await post();
+  assert.equal(failed.status, "failed"); assert.equal(failed.served, "last_known_good"); assert.deepEqual(failed.failed, ["rosters"]);
+  u.fail.clear();
+  const retry = await post(); // immediately: inside the cooldown, nothing is attempted
+  assert.deepEqual(retry.attempted.filter(n => n === "rosters"), []);
+  assert.equal(retry.status, "failed", "a deferred retry is not a success"); assert.equal(retry.served, "last_known_good");
+  assert.deepEqual(retry.failed, []); assert.ok(retry.unresolved.includes("rosters")); assert.ok(retry.deferred.includes("rosters"));
+  assert.ok(retry.retry_after_seconds > 0 && retry.retry_after_seconds <= REFRESH_POLICY.min_force_interval_seconds);
+  assert.equal(retry.input_revision, r1.input_revision); assert.deepEqual(retry.snapshot.rosters, r1.snapshot.rosters);
+  assert.equal(retry.snapshot.coverage.freshness.resources.rosters.last_attempt_status, "failed");
+  assert.ok(retry.snapshot.coverage.freshness.resources.rosters.error, "the error is not cleared");
+  now.advance(retry.retry_after_seconds);
+  const later = await post();
+  assert.equal(later.status, "ok"); assert.equal(later.served, "refreshed"); assert.deepEqual(later.unresolved, []); assert.deepEqual(later.deferred, []);
+  assert.notEqual(later.input_revision, r1.input_revision);
+  assert.equal(later.snapshot.coverage.freshness.resources.rosters.error, null);
+  // Client: the deferred failure keeps the error message with a retry hint; the later success clears it.
+  const states = []; let answer = r1;
+  const loader = createSnapshotLoader(s => states.push(s), async () => ({ ok: true, json: async () => answer }));
+  await loader.refresh(LEAGUE, { userId: null });
+  answer = retry; await loader.refresh(LEAGUE, { userId: null });
+  assert.match(states.at(-1).refreshError, /could not be refreshed \(.*rosters.*\)\. Retry available in \d+ s\./);
+  assert.equal(states.at(-1).refresh.status, "failed");
+  answer = later; await loader.refresh(LEAGUE, { userId: null });
+  assert.equal(states.at(-1).refreshError, "");
 });
