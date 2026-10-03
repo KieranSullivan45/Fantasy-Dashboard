@@ -51,7 +51,8 @@ Model `decision-0.3.2` / `weekly-features-2` is specified in `docs/v0.3.2.md`; d
 - Missing data stays `null`/unknown with a warning. Never coerce to zero, generic PPR, standard scoring or a default assumption.
 - No player identity guessing. Names never establish identity; only exact, unambiguous crosswalks. Unresolved IDs stay explicitly unresolved.
 - Football Value, Roster Value and Market Value are distinct. **Market Value does not exist yet** and stays `null`. Sleeper trending adds, attention or buzz are not Market Value and must not be converted into it (including for trades).
-- No sportsbook, betting or odds-derived data. No HTML scraping, unofficial endpoints or bot-protection bypass.
+- Betting/odds-derived information may be researched and evaluated as a predictive input for fantasy-football forecasting and decision support. It may affect production only after a separately scoped empirical comparison shows material incremental value, robustness, no future leakage, reliable/permitted data availability, and the human owner explicitly approves the production model/policy change. This does not authorize wagering functionality or automatic model/weight changes.
+- No HTML scraping, unofficial endpoints or bot-protection bypass.
 - Preserve Superflex, TE premium, dual-position eligibility, Hungarian legal-lineup optimization and add/drop safeguards.
 - Never fabricate test results, backtest metrics, prospective outcomes, live-validation claims, source data, fixtures presented as real, or API capabilities.
 

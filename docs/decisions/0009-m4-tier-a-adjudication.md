@@ -117,7 +117,9 @@ None of these is a protocol amendment.
   - an H1 freeze specification.
 - The candidate-specific H9 test period starts at this ADR's merge. Every 2026 game before it is outside H9's
   prospective evidence.
-- `docs/v0.3.2.md` and `docs/decision-model-research.md` still state that no betting-derived input is used, which the
-  xFP certificate contradicts (`TASKS.md`, M4-DATA-READINESS-01). Correcting them is a separate follow-up.
+- The no-betting statements in `docs/v0.3.2.md` and `docs/decision-model-research.md`, which the xFP certificate
+  contradicted, were corrected separately by POLICY-BETTING-01 (ADR 0010), which is not part of this decision. ADR 0010 does
+  not change the xFP exclusion applied in this Tier-A run, and Protocol v1 D4 continues to govern claims made under that
+  protocol.
 - Revisit when a shadow scorer exists, when H4 is run, when H1 is frozen, or when a protocol v2 addresses the §8.4 null
   for window/shrinkage questions.
