@@ -19,7 +19,7 @@ The repository already treats one numeric ESPN vocabulary as verified (`ESPN_SLO
    - Every unlisted key is rejected at every level. That covers headers, cookies, URLs, member/owner data, stats, projections, ownership rates, transactions, messages and draft data, so "sanitized" has an enforceable definition.
    - Also rejected:
      - credential-like keys at any depth (the existing `rejectCredentials`);
-     - GUID/SWID-shaped strings (this also catches member IDs);
+     - GUID/SWID-shaped strings (this also catches member IDs) and e-mail addresses;
      - `espn_s2=` / `SWID=` / bearer / cookie header text;
      - strings over 128 characters;
      - nesting over 12;
@@ -48,11 +48,12 @@ The repository already treats one numeric ESPN vocabulary as verified (`ESPN_SLO
      Flaim and raw-import snapshots were confirmed byte-identical to `main`.
 3. **Scoring authority stays the user-authorized configuration (ADR 0003).**
    - File facts always carry `scoring.available: false`. The file's scoring items are returned beside the facts and used only by `crossCheckEspnScoring` (`lib/providers/espn-file/scoring-check.js`).
-   - The check compares only the 20 internal rules that both the verified table and the authorized translation produce exactly. An absent rule counts as 0 on either side; items with positional overrides are not compared.
+   - The check compares only the 20 internal rules that both the verified table and the authorized translation produce exactly. An absent rule counts as 0 on either side. Base points are always compared, and a positional override that differs from its base points counts as a mismatch, because the authorized configuration cannot express positional premiums.
    - Verdicts:
      - `consistent` / `not_comparable` / `unavailable`: the configuration is applied as today, with a provenance warning.
      - `mismatch`: the configuration is not applied, so scoring is unavailable and scoring-dependent analysis refuses. Rosters still load.
-   - Unverified identifiers and overrides are counted, never mapped. File scoring is never promoted to a source, and no ESPN default is ever assumed.
+   - The verdict is tied to the exact facts object it was computed for, and scoring is resolved from that object, so a file replaced mid-request can never have its scoring applied on another file's verdict.
+   - Unverified identifiers are counted, never mapped. File scoring is never promoted to a source, and no ESPN default is ever assumed.
 4. **Roster selection is explicit.** A league file carries no owner data, so `user_team_id` is null and `identity.mode` is `spectator` unless the request passes `roster=` (`selected_roster`). The private config's `team_id` is validated against the file's teams and selects nothing. The Flaim source keeps its session-resolved owner.
 5. **Available players are an observed subset.**
    - Optional `available.coverage` must be `observed_subset`.

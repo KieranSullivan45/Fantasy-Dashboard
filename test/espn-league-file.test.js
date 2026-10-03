@@ -163,7 +163,7 @@ test("scoring: file items are cross-check evidence only and never become facts s
  assert.equal(observedScoring.length,14);
  const s=snapshotFromEspnFacts(facts);
  assert.deepEqual([s.coverage.scoring_available,s.coverage.scoring_source,s.capabilities.scoringRules],[false,null,false]);assert.deepEqual(s.league.scoring_settings,{});
- assert.deepEqual(crossCheckEspnScoring(observedScoring,SCORING),{status:"consistent",compared:19,mismatched:0,not_comparable:1,unverified:1});
+ assert.deepEqual(crossCheckEspnScoring(observedScoring,SCORING),{status:"consistent",compared:20,mismatched:0,not_comparable:0,unverified:1});
  const changed=structuredClone(observedScoring);changed.find(i=>i.statId===4).points=6;
  assert.equal(crossCheckEspnScoring(changed,SCORING).status,"mismatch");
  assert.equal(crossCheckEspnScoring(observedScoring.filter(i=>i.statId!==25),SCORING).status,"mismatch","absent in the file but non-zero in the configuration");
@@ -194,8 +194,8 @@ test("private provider: authorized scoring stays the source of record; roster se
   assert.deepEqual([s.identity.mode,s.identity.selected_roster_id,s.my_roster],["spectator",null,null],"config team_id never selects a roster");
   assert.deepEqual([s.coverage.access,s.coverage.source_transport,s.coverage.visibility,s.coverage.scoring_source,s.coverage.scoring_available,s.coverage.nfl_state_verification],
    ["saved_league_file","league_file","private","user_authorized",true,"required"]);
-  assert.equal(s.league.scoring_settings.rec,0.5,"authorized value, not the file's override");
-  assert.ok(s.warnings.some(w=>w.code==="PROVENANCE"&&/agree with the authorized scoring configuration on 19/.test(w.message)));
+  assert.equal(s.league.scoring_settings.rec,0.5,"authorized value");
+  assert.ok(s.warnings.some(w=>w.code==="PROVENANCE"&&/agree with the authorized scoring configuration on 20/.test(w.message)));
   assert.ok(s.warnings.some(w=>w.code==="STALE_DATA_RISK"));
   const mine=await p.getSnapshot(LEAGUE,{rosterId:1});assert.deepEqual([mine.identity.mode,mine.my_roster.roster_id],["selected_roster",1]);
   await assert.rejects(p.getSnapshot(LEAGUE,{rosterId:9}),refused("LEAGUE_NOT_FOUND"));
@@ -215,7 +215,7 @@ test("private provider: authorized scoring stays the source of record; roster se
 });
 
 test("scoring cross-check mismatch or a missing configuration fails closed; scoring defaults are never invented",async()=>{
- const mismatch=privateFolder({league:file(f=>{f.league.settings.scoringSettings.scoringItems.find(i=>i.statId===53).pointsOverrides=undefined;f.league.settings.scoringSettings.scoringItems.find(i=>i.statId===53).points=1;delete f.league.settings.scoringSettings.scoringItems.find(i=>i.statId===53).pointsOverrides;})});
+ const mismatch=privateFolder({league:file(f=>{f.league.settings.scoringSettings.scoringItems.find(i=>i.statId===53).points=1;})});
  try{
   const p=provider(mismatch.env),s=await p.getSnapshot(LEAGUE,{rosterId:1});
   assert.deepEqual([s.coverage.scoring_available,s.coverage.scoring_source],[false,null]);assert.deepEqual(s.league.scoring_settings,{});
@@ -234,6 +234,31 @@ test("scoring cross-check mismatch or a missing configuration fails closed; scor
   assert.equal(s.coverage.scoring_source,"user_authorized","the transcription stays the authority");assert.equal(s.league.scoring_settings.pass_td,4);
   assert.ok(s.warnings.some(w=>/carries no scoring items/.test(w.message)));
  }finally{absent.cleanup();}
+});
+
+test("review regressions: a file swapped mid-request is never scored; positional overrides are never hidden; prototype keys and e-mail are refused",async()=>{
+ // A mismatched file replaced by a consistent one between loading facts and resolving scoring must still be unscored.
+ const swap=privateFolder({league:file(f=>{f.league.settings.scoringSettings.scoringItems.find(i=>i.statId===4).points+=7;})});
+ try{
+  const p=provider(swap.env,{loadIds:async()=>{writeFileSync(swap.leaguePath,JSON.stringify(FILE));return {data:CROSSWALK};}});
+  const s=await p.getSnapshot(LEAGUE);
+  assert.deepEqual([s.coverage.scoring_available,s.coverage.scoring_source],[false,null]);assert.ok(s.warnings.some(w=>/disagree/.test(w.message)));
+  assert.equal((await provider(swap.env).getSnapshot(LEAGUE)).coverage.scoring_available,true,"the consistent file is scored on its own request");
+ }finally{swap.cleanup();}
+ const {observedScoring}=map(),item=key=>observedScoring.find(i=>i.statId===key);
+ const premium=structuredClone(observedScoring);premium.find(i=>i.statId===53).pointsOverrides={"4":1};
+ assert.deepEqual(crossCheckEspnScoring(premium,SCORING),{status:"mismatch",compared:20,mismatched:1,not_comparable:0,unverified:1},"a positional premium cannot be shown to agree");
+ const same=structuredClone(observedScoring);same.find(i=>i.statId===53).pointsOverrides={"4":item(53).points};
+ assert.equal(crossCheckEspnScoring(same,SCORING).status,"consistent","an override equal to its base is no premium");
+ const both=structuredClone(observedScoring);Object.assign(both.find(i=>i.statId===53),{points:1,pointsOverrides:{"4":1}});
+ assert.equal(crossCheckEspnScoring(both,SCORING).status,"mismatch","base points are compared even when an override exists");
+ for(const key of ["__proto__","constructor","prototype"]){
+  const raw=JSON.parse(JSON.stringify(FILE).replace('"binding":',`"${key}":{"x":1},"binding":`));
+  assert.throws(()=>map(raw),refused("INVALID_IMPORT"),key);
+  const nested=JSON.parse(JSON.stringify(FILE).replace('"lineupSlotCounts":',`"${key}":1,"lineupSlotCounts":`));
+  assert.throws(()=>map(nested),refused("INVALID_IMPORT"),`nested ${key}`);
+ }
+ assert.throws(()=>map(file(f=>{team(f,2).name="owner@example.com";})),e=>e.code==="INVALID_IMPORT"&&noValues(e,"owner@example.com"));
 });
 
 test("available players: absent or an observed subset, never complete; pool-dependent features stay gated",async()=>{
@@ -345,7 +370,7 @@ test("espn:import validates before installing, keeps the previous file and print
   const ok=importLeagueFile([incoming],{env:f.env,now:NOW});
   assert.equal(ok.exit,0,ok.lines.join("\n"));
   const text=ok.lines.join("\n");
-  assert.match(text,/Teams: 3; roster entries: 15/);assert.match(text,/cross-check consistent \(compared 19, mismatched 0, not compared 2\)/);assert.match(text,/Available players: not included/);
+  assert.match(text,/Teams: 3; roster entries: 15/);assert.match(text,/cross-check consistent \(compared 20, mismatched 0, not compared 1\)/);assert.match(text,/Available players: not included/);
   for(const leak of ["Synthetic",LEAGUE,"910001",f.dir])assert.ok(!text.includes(leak),`summary leaks ${leak}`);
   assert.equal(JSON.parse(readFileSync(f.leaguePath,"utf8")).captured_at,"2026-09-27T12:00:00Z");assert.equal(JSON.parse(readFileSync(`${f.leaguePath}.prev`,"utf8")).captured_at,"2026-09-26T12:00:00Z");
   for(const bad of [file(x=>{x.espn_s2="fake-cookie-secret";}),file(x=>{x.binding.league_id="777777";x.league.id=777777;}),file(x=>{team(x,1).name="Synthetic Leak Name";team(x,3).id=1;})]){
