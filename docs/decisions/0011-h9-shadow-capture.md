@@ -32,7 +32,16 @@ never shown to users.
    The owner confirmed this on 2026-10-03. The record flags the case (`existing_prior_absent_h9_present`). The Y−1 rows are the exact rows production used, passed out by an optional
    `shadowObserver` hook on `buildDecisionState`. Y−2 rows are loaded by the shadow with the same identity map, league
    scoring and player set. Prior rows must carry an explicit season type (on the row or its raw source row); only `REG`
-   rows count, and a row of unknown type is never assumed to be `REG`. ADR 0009 defines no duplicate resolution, so H9 relies
+   rows count, and a row of unknown type is never assumed to be `REG`. The canonical nflverse weekly player-stat
+   `season_type` domain is exactly `REG` (candidate input) and `POST` (known exclusion), per the nflreadr
+   `dictionary_playerstats` contract ("REG for regular season, POST for postseason") and the 2024/2025 files, which hold
+   only those two values. Anything else (missing, blank, `UNKNOWN`, `UNK`, `PRE`, case or padding variants) is invalid and
+   is never normalized. Because `buildProduction` silently drops every non-`REG` raw row, the shadow audits the **raw** rows
+   of both prior seasons before normalization: Y−1 through a reference to the exact raw rows production loaded (passed by
+   the hook), Y−2 on the raw rows the shadow loaded. A non-canonical row is attributed to a player only through the exact
+   statistical-ID map (unmapped rows are counted, never assigned) and withholds H9 for that player only. Each record keeps a
+   compact `source_integrity` per prior season (`valid`/`invalid`/`unavailable`, malformed-row count, reason). The pure
+   seam (`priorInputProblem`) applies the same canonical domain to direct inputs. ADR 0009 defines no duplicate resolution, so H9 relies
    on the existing upstream precondition: `buildProduction` keeps one row per statistical player and `game_id`. If more than one row
    per player-game still reaches H9, or a row has no season type, H9 is withheld (`invalid_input`) rather than choosing.
    Chronology must be verified too. Every Y−2/Y−1 `REG` row needs a positive integer week and a non-empty `game_id`, as the

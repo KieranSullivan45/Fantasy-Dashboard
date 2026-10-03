@@ -7,7 +7,7 @@ import { gunzipSync } from "node:zlib";
 import { buildDecisionContext } from "../lib/decision/build-context.js";
 import { weeklyFeatures } from "../lib/decision/features.js";
 import { decisionFixtureOptions, source } from "./decision-fixtures.js";
-import { h9Prior, h9Quality, basisCheck, assertClassification, buildH9ShadowCapture, appendH9ShadowCapture, prospectiveEligibility, H9_CANDIDATE } from "../lib/shadow/h9.js";
+import { h9Prior, h9Quality, basisCheck, assertClassification, buildH9ShadowCapture, appendH9ShadowCapture, prospectiveEligibility, rawSeasonTypeAudit, SEASON_TYPES, H9_CANDIDATE } from "../lib/shadow/h9.js";
 
 const NOW = Date.parse("2026-10-05T12:00:00Z");
 const row = (season, week, points, extra = {}) => ({ season, week, points, game_id: `${season}_${week}`, team: "BUF", season_type: "REG", ...extra });
@@ -17,7 +17,7 @@ const retrospective = (prev2, prev) => { const isNum = v => typeof v === "number
   let s = 0, ws = 0; all.forEach((r, i) => { const wt = 0.5 ** ((all.length - 1 - i) / 16); s += wt * r.points; ws += wt; }); return s / ws; };
 
 /** Fixture where 2026 is current and 2025/2024 carry prior rows; Y−2 load can be made to fail. */
-function shadowOptions({ y2 = "ok", y1 = "ok", now = NOW, kickoffDay = null, noCurrent = null, priorMutate = null } = {}) {
+function shadowOptions({ y2 = "ok", y1 = "ok", now = NOW, kickoffDay = null, noCurrent = null, priorMutate = null, y2Mutate = null } = {}) {
   const base = decisionFixtureOptions(), calls = [];
   const prior = season => Array.from({ length: 20 }, (_, i) => [1, 2, 3, 4].map(week => ({ player_id: `g${i + 1}`, position: "RB", season: String(season), season_type: "REG",
     week: String(week), game_id: `g${season}_${week}`, team: "BUF", opponent_team: "NE", receptions: String((i + week + season) % 9), passing_tds: "0", targets: "5", carries: String(week) }))).flat();
@@ -28,7 +28,7 @@ function shadowOptions({ y2 = "ok", y1 = "ok", now = NOW, kickoffDay = null, noC
     if (season === 2026) { const cur = await current(); return noCurrent ? { ...cur, data: cur.data.filter(r => !noCurrent.includes(r.player_id)) } : cur; }
     if (season === 2025) { if (y1 === "throw") throw new Error("Y-1 outage"); const rows = priorMutate ? priorMutate(prior(2025)) : prior(2025);
       return y1 === "ok" ? source("nflverse_stats", rows) : { ...source("nflverse_stats", rows), status: y1 }; }
-    if (y2 === "throw") throw new Error("Y-2 outage"); return source("nflverse_stats", prior(2024)); } } };
+    if (y2 === "throw") throw new Error("Y-2 outage"); return source("nflverse_stats", y2Mutate ? y2Mutate(prior(2024)) : prior(2024)); } } };
 }
 async function build(opts) {
   let internals = null;
@@ -324,4 +324,59 @@ test("blocker 4: prior rows without verified chronology withhold H9", async () =
   const g1 = capture.records.find(r => r.player.player_id === "1"), g2 = capture.records.find(r => r.player.player_id === "2");
   assert.equal(g1.h9.status, "withheld"); assert.match(g1.h9.withheld_reason, /week/); assert.equal(g1.prospective_eligibility.eligible, false);
   assert.equal(g2.h9.status, "computed");
+});
+
+test("season type: the pure seam accepts only canonical REG/POST; blank and unrecognized labels are invalid", () => {
+  const ok = [row(2024, 1, 8), row(2025, 1, 12), row(2025, 2, 4)];
+  assert.deepEqual(Object.keys(SEASON_TYPES), ["REG", "POST"]);
+  for (const type of ["", "UNKNOWN", "UNK", "PRE", "reg", " REG", "REG ", null, undefined]) {
+    const p = h9Prior([...ok, row(2025, 3, 9, { season_type: type })], 2026);
+    assert.equal(p.status, "invalid_input", JSON.stringify(type)); assert.equal(p.ppg, null); assert.match(p.reason, /canonical season type/);
+  }
+  // Raw-source type is checked the same way when the normalized row carries none.
+  assert.equal(h9Prior([...ok, { season: 2025, week: 3, points: 9, game_id: "x", raw_stats: { season_type: "UNK" } }], 2026).status, "invalid_input");
+  // REG computes normally; POST is a known exclusion and does not poison valid REG history.
+  const reg = h9Prior(ok, 2026);
+  assert.equal(reg.status, "present");
+  const post = h9Prior([...ok, row(2025, 19, 40, { season_type: "POST", game_id: "p1" }), row(2024, 19, 30, { season_type: "POST", game_id: "p2" })], 2026);
+  assert.equal(post.status, "present"); assert.equal(post.ppg, reg.ppg);
+});
+
+test("season type: raw audit attributes malformed rows only through the exact ID map", () => {
+  const ids = new Map([["g1", "1"], ["g2", "2"]]);
+  const raw = [{ player_id: "g1", season: "2025", season_type: "" }, { player_id: "g1", season: "2025", season_type: "UNK" }, { player_id: "g2", season: "2025", season_type: "POST" },
+    { player_id: "g2", season: "2025", season_type: "REG" }, { player_id: "zz", season: "2025", season_type: "UNKNOWN" }, { player_id: "g2", season: "2024", season_type: "UNK" }];
+  const a = rawSeasonTypeAudit(raw, ids, 2025);
+  assert.deepEqual([...a.byPlayerId], [["1", 2]]); assert.equal(a.unmapped, 1);
+});
+
+for (const type of ["", "UNKNOWN", "UNK"]) {
+  test(`season type: raw Y−1 ${JSON.stringify(type)} row withholds only the affected player's H9; production unchanged`, async () => {
+    const { capture } = await futureCapture({ priorMutate: rows => [...rows, { ...rows.find(r => r.player_id === "g1"), week: "5", game_id: "g2025_x", season_type: type }] });
+    const g1 = capture.records.find(r => r.player.player_id === "1"), g2 = capture.records.find(r => r.player.player_id === "2");
+    assert.equal(g1.h9.status, "withheld"); assert.equal(g1.h9.quality_points, null); assert.equal(g1.h9.prior, null);
+    assert.match(g1.h9.withheld_reason, /Season-type source integrity: 1 raw Y−1 row/);
+    assert.deepEqual([g1.prospective_eligibility.eligible, g1.prospective_eligibility.reason], [false, "h9_withheld"]);
+    assert.deepEqual(g1.source_integrity.y_minus_1, { status: "invalid", malformed_season_type_rows: 1, reason: "Raw season Y−1 rows with a non-canonical season_type for this player" });
+    assert.equal(g1.source_integrity.y_minus_2.status, "valid");
+    // Production fields stay intact on the withheld record.
+    assert.equal(typeof g1.production.quality_points, "number");
+    assert.equal(g2.h9.status, "computed"); assert.equal(g2.prospective_eligibility.eligible, true);
+    assert.deepEqual(g2.source_integrity, { y_minus_1: { status: "valid", malformed_season_type_rows: 0, reason: null }, y_minus_2: { status: "valid", malformed_season_type_rows: 0, reason: null } });
+  });
+}
+
+test("season type: raw Y−2 malformed row withholds the affected player's H9; POST rows stay known exclusions", async () => {
+  const { capture } = await futureCapture({ y2Mutate: rows => [...rows, { ...rows.find(r => r.player_id === "g1"), week: "6", game_id: "g2024_x", season_type: "UNK" },
+    { ...rows.find(r => r.player_id === "g2"), week: "19", game_id: "g2024_p", season_type: "POST" }],
+    priorMutate: rows => [...rows, { ...rows.find(r => r.player_id === "g3"), week: "19", game_id: "g2025_p", season_type: "POST" }] });
+  const g1 = capture.records.find(r => r.player.player_id === "1");
+  assert.equal(g1.h9.status, "withheld"); assert.match(g1.h9.withheld_reason, /raw Y−2 row/); assert.equal(g1.prospective_eligibility.eligible, false);
+  assert.deepEqual([g1.source_integrity.y_minus_1.status, g1.source_integrity.y_minus_2.status, g1.source_integrity.y_minus_2.malformed_season_type_rows], ["valid", "invalid", 1]);
+  for (const id of ["2", "3"]) { const r = capture.records.find(x => x.player.player_id === id); assert.equal(r.h9.status, "computed"); assert.equal(r.prospective_eligibility.eligible, true); }
+});
+
+test("season type: an unavailable prior season records unavailable integrity", async () => {
+  const { capture } = await futureCapture({ y2: "throw" });
+  for (const r of capture.records) assert.deepEqual([r.source_integrity.y_minus_1.status, r.source_integrity.y_minus_2.status], ["valid", "unavailable"]);
 });
