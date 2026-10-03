@@ -27,6 +27,21 @@ Status values: `proposed` · `ready` · `in-progress` · `in-review` · `blocked
 
 ## Active tasks
 
+### H9-SHADOW-01 — H9 `ew2_h16` prospective shadow capture
+- Status: in-review (implementation on the branch; merge not requested)
+- Owner: Claude Code (project thread)
+- Reviewer: repository owner, with independent review (Codex) as the owner routes it
+- Branch: `claude/project-thread-t4oqt0` (the push branch the Claude project session assigned), from `main` at `0e4da99`
+- Dependencies: M4-TIER-A-01 (ADR 0009, effective at the PR #17 merge, 2026-10-03T03:15:40Z); EVAL-PROTOCOL-01
+- Allowed scope: `lib/shadow/h9.js` (new), an optional `shadowObserver` hook in `lib/decision/build-context.js`, `scripts/capture-history.js`, `test/h9-shadow.test.js` (new), ADR 0011, an `ARCHITECTURE.md` history line, and this entry. Forbidden: Start Value, weights, thresholds, calibration, Pickup Rating, trades, Football/Roster/Market Value, user-facing routes or UI, the `observation-1`/`capture-1`/`archive-index-1` schemas, workflows, `docs/evaluation-protocol-v1.md`, the H9 definition, and 2026 outcomes.
+- Acceptance criteria: future 2026 production Start Value and H9 predictions are recorded side by side before outcomes; backfill cannot be labelled prospective; H9 matches ADR 0009; production output is unchanged; shadow failures are isolated; missing stays missing; no future leakage; tests and build are green.
+- Handoff notes:
+  - Work: the capture worker writes immutable `h9-shadow-1` records (in `h9-shadow-capture-1` files) under `data/shadow/h9-ew2_h16/prospective/<season>/<league>/` on `data-archive`, alongside each `capture-1` (ADR 0011). H9 Q is the candidate prediction of record, and a Start-weights frame with H9 Q is recorded as a comparator only. The Y−1 rows come from the exact decision build through the hook. Y−2 is loaded separately, and a basis check proves the rows reproduce production's last-8 prior and Q. A Y−2 outage or basis mismatch withholds H9 (`null` with a reason). Prospective records are refused before the ADR 0009 boundary or more than 30 minutes from the wall clock. Replay/test records use separate partitions and IDs.
+  - Interpretation recorded, not invented: k is production's existing value. When the existing last-8 prior is absent but Y−1 has an earlier numeric row, k = 0, so H9 Q equals S (or the H9 prior when S is absent). This is the retrospective `qOf(c, Pew16, c.k)` behaviour, and the record flags it as `existing_prior_absent_h9_present`.
+  - Tests: `pnpm test` 354 pass / 0 fail (344 existing + 10 new in `test/h9-shadow.test.js`). `pnpm build` succeeded. `pnpm test:ui` 36 pass / 0 fail. The sandbox lacks Playwright's pinned headless shell (build 1243), so the UI run used the preinstalled 1194 headless shell via a temporary `PLAYWRIGHT_BROWSERS_PATH`; CI runs the pinned browser. The capture script was syntax-checked only: the cloud sandbox cannot reach Sleeper, so no live capture ran.
+  - Remaining (each needs approval): the outcome/participation-aware scoring harness for shadow records (lineup-of-record selection, dropped-case table, participation-conditional and -inclusive reporting); the protocol §12 archive follow-ups before any confirmatory claim; and verifying the first live shadow files after merge.
+- Blockers: none. Records begin only after merge to `main`.
+
 ### POLICY-BETTING-01 — Controlled betting/odds-derived predictive-input policy
 - Status: in-review (owner explicitly authorized the policy change on 2026-10-02; documentation-only PR pending)
 - Owner: ChatGPT PM

@@ -60,6 +60,7 @@ Backtest       lib/backtest/*, scripts/backtest.js → artifacts/backtests/v032-
 - `observation-1` records (full decision evidence, versions, source digests, identity) are batched into immutable `capture-1` gzip files with deterministic IDs and a six-hour dedup bucket. `outcome-1` joins (`outcomes.js`) use strictly post-observation games.
 - Durable store: the separate `data-archive` git branch, written only by `.github/workflows/capture-history.yml` (every 6 h, manual, or after a successful `Validate` on main) for leagues in `config/installation.json`. Sleeper paths are `observations/<season>/<league>`; future non-Sleeper paths will be `observations/<provider>/<season>/<league>`.
 - Mutable by design: `index.json` (`archive-index-1`) is a rolling index of the newest 1000 captures, rewritten on each capture (`git-store.js`). The market comparison index is a rolling 14-day window. `high-value-1` season aggregates are refreshed each run (`scripts/refresh-high-value.js`). Capture files and Git history are never deleted or rewritten.
+- H9 shadow (ADR 0011, research-only): after each capture the worker writes immutable `h9-shadow-1` records (production Start Value next to the ADR 0009 `ew2_h16` Q) under `data/shadow/h9-ew2_h16/prospective/…` (`lib/shadow/h9.js`). Nothing user-facing reads them.
 - Public GET routes only read (`archive-reader.js`, `/api/chat/history`). Browser-selected friend leagues and ESPN previews are never archived.
 
 ## APIs and client state
