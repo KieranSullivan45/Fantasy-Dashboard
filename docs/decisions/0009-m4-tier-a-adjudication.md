@@ -43,6 +43,11 @@ Pooled change in MAE vs `Q`, PPR points per player-game (negative = better), Ben
    - Weights: `w_g = 0.5^(g/16)`, where g is the number of included prior player-games ago (g = 0 for the most recent
      included game). g is not counted in elapsed team or calendar weeks. The prior is the weighted mean `Σ w_g·points_g / Σ w_g`,
      with the weights normalized over the included games only.
+   - Missing points: a recorded prior row whose points are missing or non-numeric is excluded **before** g is assigned. It
+     consumes no g position, carries no weight, and is never a zero. A row with numeric points is "included" and counts for
+     g. Unlike the existing last-8 prior, there is no row-count window to fill. This is exactly the retrospective `ew2_h16`
+     computation: it filters Y−2 and Y−1 rows to numeric points, assigns g in that order (most recent g = 0), and returns no
+     prior when Y−1 has no numeric-point row.
    - Absence: if the player has no included season Y−1 game, the prior is absent, exactly as today. There is no silent
      fallback to Y−2 alone.
    - `k` behaviour is preserved, including the changed-team / role-expansion branch (`k = 1`) and its existing definitions.
