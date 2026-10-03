@@ -27,6 +27,17 @@ Status values: `proposed` · `ready` · `in-progress` · `in-review` · `blocked
 
 ## Active tasks
 
+### POLICY-BETTING-01 — Controlled betting/odds-derived predictive-input policy
+- Status: in-review (owner explicitly authorized the policy change on 2026-10-02; documentation-only PR pending)
+- Owner: ChatGPT PM
+- Reviewer: repository owner
+- Branch: `docs/policy-betting-01-controlled-inputs`
+- Dependencies: none for the policy change. PR #17 separately records the current ffopportunity xFP provenance and M4 adjudication; ADR number 0009 is reserved there, so this task uses ADR 0010.
+- Allowed scope: `AGENTS.md`, `PROJECT_SPEC.md`, current-state model/research documentation needed to remove contradictory betting-input claims, ADR 0010, and this task entry. No production code, model weights, schemas, provider activation, data-source implementation, or Evaluation Protocol v1 edits.
+- Acceptance criteria: betting/odds-derived information is research-eligible for fantasy forecasting; wagering functionality remains out of scope; production use/change requires empirical evidence and explicit owner approval; current xFP production behavior is unchanged; Protocol v1 remains unedited historical record; unrelated security/provider safeguards remain intact.
+- Handoff notes: replaced the blanket `AGENTS.md` prohibition with a controlled research/promotion policy; aligned `PROJECT_SPEC.md`; corrected current-state statements in `docs/v0.3.2.md` and `docs/decision-model-research.md`; added ADR 0010. Documentation only, so executable tests were not run. Verify by PR diff/search and normal CI.
+- Blockers: none beyond review/merge.
+
 ### M4-TIER-A-01 — M4 Tier-A historical research (H1, H2, H3, H9, H10, non-xFP H5) and owner adjudication
 - Status: in-review (research complete 2026-10-03; owner adjudication recorded in ADR 0009 by documentation-only PR #17, which is not merged)
 - Owner: Claude Code (project thread)
