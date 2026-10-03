@@ -34,8 +34,13 @@ never shown to users.
    scoring and player set. Prior rows must carry an explicit season type (on the row or its raw source row); only `REG`
    rows count, and a row of unknown type is never assumed to be `REG`. ADR 0009 defines no duplicate resolution, so H9 relies
    on the existing upstream precondition: `buildProduction` keeps one row per statistical player and `game_id`. If more than one row
-   per player-game still reaches H9, or a row has no season type, H9 is withheld (`invalid_input`) rather than choosing. A per-player basis check recomputes production's last-8 prior and Q from those rows. On a
-   mismatch, or if Y−2 is unavailable, H9 is withheld (`null` with a reason) and never computed from partial history.
+   per player-game still reaches H9, or a row has no season type, H9 is withheld (`invalid_input`) rather than choosing.
+   Chronology must be verified too. Every Y−2/Y−1 `REG` row needs a positive integer week and a non-empty `game_id`, as the
+   nflverse stats contract requires, and no two games may share a week. A blank raw week normalized to 0, for example,
+   withholds H9 instead of letting array position supply the order. A per-player basis check recomputes production's last-8 prior and Q from those rows. On a
+   mismatch, or unless both the Y−1 source in `decision.sources` (`nflverse_prior_stats`) and the Y−2 source report exactly
+   `available`, H9 is withheld (`null` with a reason, and the source status is kept). It is never computed from partial
+   history. Production's own fallback to an empty prior is unchanged.
 3. **Record contents.** Each record holds: `generated_at`; season, week and `data_through_week`; provider and league ID
    (the same public Sleeper identity `observation-1` already archives); the scoring-settings hash and profile; the provider
    and exact-crosswalk statistical player IDs; position and schedule/kickoff; and the production Start Value, Q and prior.
@@ -50,9 +55,13 @@ never shown to users.
    boundary and within 30 minutes of the wall clock when it is computed and written, so a reconstructed decision cannot be labelled prospective.
    The worker writes `prospective` only. Each record also retains `frozen_at`, the time taken after every H9 value in the
    capture was computed, and a per-player `prospective_eligibility`. A record is eligible only if it is `prospective`, H9 was
-   not withheld, its target game (the decision week's scheduled game, `schedule.game_id`/`kickoff`) kicks off strictly after
+   not withheld, H9 Q (the prediction of record) is finite, its target game (the decision week's scheduled game, `schedule.game_id`/`kickoff`) kicks off strictly after
    `frozen_at`, and that kickoff is strictly after the ADR 0009 boundary. Ineligible records stay in the file with
-   their reason (`kickoff_not_after_freeze`, `kickoff_not_after_candidate_boundary`, `no_target_kickoff`, `h9_withheld`).
+   their reason (`h9_withheld`, `no_h9_prediction`, `no_target_kickoff`, `kickoff_not_after_candidate_boundary`,
+   `kickoff_not_after_freeze`). A missing H9 prior alone does not disqualify a record when current-season S gives a finite Q.
+   For a prospective capture, `generated_at` and `frozen_at` must both be finite and at or after the boundary, with
+   `frozen_at` at or after `generated_at`. The builder enforces this. The writer independently re-checks it, and it also
+   recomputes every record's eligibility and refuses a mismatch.
    `generated_at` alone never establishes eligibility. A prospective capture is refused if it is written more than
    30 minutes after `frozen_at`. `frozen_at` is excluded from the record ID, so identical evidence still deduplicates and the
    first stored freeze time is kept. Replay/test records never share its partition, and a capture mixing

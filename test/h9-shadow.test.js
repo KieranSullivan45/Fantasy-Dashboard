@@ -17,7 +17,7 @@ const retrospective = (prev2, prev) => { const isNum = v => typeof v === "number
   let s = 0, ws = 0; all.forEach((r, i) => { const wt = 0.5 ** ((all.length - 1 - i) / 16); s += wt * r.points; ws += wt; }); return s / ws; };
 
 /** Fixture where 2026 is current and 2025/2024 carry prior rows; Y−2 load can be made to fail. */
-function shadowOptions({ y2 = "ok", now = NOW, kickoffDay = null } = {}) {
+function shadowOptions({ y2 = "ok", y1 = "ok", now = NOW, kickoffDay = null, noCurrent = null, priorMutate = null } = {}) {
   const base = decisionFixtureOptions(), calls = [];
   const prior = season => Array.from({ length: 20 }, (_, i) => [1, 2, 3, 4].map(week => ({ player_id: `g${i + 1}`, position: "RB", season: String(season), season_type: "REG",
     week: String(week), game_id: `g${season}_${week}`, team: "BUF", opponent_team: "NE", receptions: String((i + week + season) % 9), passing_tds: "0", targets: "5", carries: String(week) }))).flat();
@@ -25,7 +25,9 @@ function shadowOptions({ y2 = "ok", now = NOW, kickoffDay = null } = {}) {
   const scheduleSource = kickoffDay ? async () => source("nflverse_schedule", [1, 2, 3].map(week => ({ game_id: `game${week}`, game_type: "REG", season: "2026", week: String(week), home_team: "BUF", away_team: "NE",
     gameday: week === 3 ? kickoffDay : "2026-09-13", gametime: "13:00", home_score: week === 3 ? "" : "10", away_score: week === 3 ? "" : "20" }))) : base.scheduleSource;
   return { calls, options: { ...base, now, scheduleSource, statsSource: async season => { calls.push(season);
-    if (season === 2026) return current(); if (season === 2025) return source("nflverse_stats", prior(2025));
+    if (season === 2026) { const cur = await current(); return noCurrent ? { ...cur, data: cur.data.filter(r => !noCurrent.includes(r.player_id)) } : cur; }
+    if (season === 2025) { if (y1 === "throw") throw new Error("Y-1 outage"); const rows = priorMutate ? priorMutate(prior(2025)) : prior(2025);
+      return y1 === "ok" ? source("nflverse_stats", rows) : { ...source("nflverse_stats", rows), status: y1 }; }
     if (y2 === "throw") throw new Error("Y-2 outage"); return source("nflverse_stats", prior(2024)); } } };
 }
 async function build(opts) {
@@ -177,7 +179,7 @@ test("deterministic reruns on the same basis give identical H9 predictions", asy
 });
 
 test("prospective eligibility needs a freeze before the player's kickoff and a kickoff after the H9 boundary", async () => {
-  const base = { classification: "prospective", h9Status: "computed", frozenAt: "2026-10-11T16:00:00.000Z" };
+  const base = { classification: "prospective", h9Status: "computed", h9Quality: 10, frozenAt: "2026-10-11T16:00:00.000Z" };
   assert.deepEqual([prospectiveEligibility({ ...base, kickoff: "2026-10-11T17:00:00.000Z" }).eligible, prospectiveEligibility({ ...base, kickoff: "2026-10-11T16:00:00.000Z" }).reason], [true, "kickoff_not_after_freeze"]);
   assert.equal(prospectiveEligibility({ ...base, kickoff: H9_CANDIDATE.effective_at, frozenAt: "2026-10-03T03:00:00.000Z" }).reason, "kickoff_not_after_candidate_boundary");
   assert.equal(prospectiveEligibility({ ...base, kickoff: null }).reason, "no_target_kickoff");
@@ -202,7 +204,7 @@ test("prospective eligibility needs a freeze before the player's kickoff and a k
   assert.ok(old.records.length && old.records.every(r => !r.prospective_eligibility.eligible));
   // A capture written long after its freeze cannot be stored as prospective.
   const directory = await mkdtemp(join(tmpdir(), "fantasy-h9-"));
-  try { await assert.rejects(appendH9ShadowCapture(directory, { ...old, generated_at: new Date(NOW + 3600000).toISOString() }, { wallClock: NOW + 3600000 }), /freeze time/); }
+  try { await assert.rejects(appendH9ShadowCapture(directory, { ...old, generated_at: new Date(NOW + 3600000).toISOString() }, { wallClock: NOW + 3600000 }), /precede/); }
   finally { await rm(directory, { recursive: true }); }
 });
 
@@ -238,4 +240,88 @@ test("changed-team branch: H9 keeps production's k = 1", () => {
   assert.equal(f.changed_team, true); assert.equal(f.prior.effective_games, 1);
   const p = h9Prior([row(2024, 1, 20), ...prior], 2026);
   assert.equal(h9Quality(f, p), (f.season_ppg * 2 + p.ppg * 1) / 3);
+});
+
+const KICKOFF = Date.parse("2026-10-11T17:00:00Z");
+const futureOptions = extra => shadowOptions({ now: KICKOFF - 1200000, kickoffDay: "2026-10-11", ...extra });
+async function futureCapture(extra = {}) {
+  const { options } = futureOptions(extra);
+  const plain = JSON.stringify(await buildDecisionContext("A", options));
+  const { decision, internals } = await build(options);
+  assert.equal(JSON.stringify(decision), plain, "production output unchanged");
+  const capture = await buildH9ShadowCapture({ decision, internals, statsSource: options.statsSource, classification: "prospective", clock: () => KICKOFF - 600000 });
+  return { decision, capture };
+}
+
+test("blocker 1: Y−1 statistics must be exactly available, or H9 is withheld and ineligible", async () => {
+  for (const y1 of ["throw", "partial", "unsupported", "unknown"]) {
+    const { decision, capture } = await futureCapture({ y1 });
+    const src = decision.sources.find(s => s.source_id === "nflverse_prior_stats");
+    assert.notEqual(src.status, "available");
+    assert.ok(capture.records.length);
+    for (const r of capture.records) {
+      assert.equal(r.h9.status, "withheld"); assert.match(r.h9.withheld_reason, /Y−1 statistics not available/);
+      assert.equal(r.h9.quality_points, null); assert.equal(r.source_versions.prior_y1.status, src.status);
+      assert.deepEqual([r.prospective_eligibility.eligible, r.prospective_eligibility.reason], [false, "h9_withheld"]);
+    }
+  }
+});
+
+test("blocker 2: eligibility needs a finite H9 Q; a current-only Q with no H9 prior stays eligible", async () => {
+  // g21–g25: no 2026 rows and no prior → Q null. g46+: 2026 rows, no prior → current-only Q.
+  const { capture } = await futureCapture({ noCurrent: ["g21", "g22", "g23", "g24", "g25"] });
+  const none = capture.records.filter(r => ["21", "22", "23", "24", "25"].includes(r.player.player_id));
+  const currentOnly = capture.records.filter(r => r.h9.status === "computed_without_prior" && typeof r.h9.quality_points === "number" && r.schedule.kickoff);
+  assert.ok(none.length && currentOnly.length);
+  for (const r of none) {
+    assert.equal(r.h9.quality_points, null); assert.notEqual(r.h9.status, "withheld");
+    assert.deepEqual([r.prospective_eligibility.eligible, r.prospective_eligibility.reason], [false, "no_h9_prediction"]);
+  }
+  for (const r of currentOnly) { assert.equal(r.h9.prior.status, "absent"); assert.equal(r.prospective_eligibility.eligible, true); }
+  assert.equal(prospectiveEligibility({ classification: "prospective", h9Status: "computed", h9Quality: NaN, kickoff: "2026-10-11T17:00:00Z", frozenAt: "2026-10-11T16:00:00Z" }).reason, "no_h9_prediction");
+});
+
+test("blocker 3: prospective frozen_at must follow the boundary and generated_at, at build and at write", async () => {
+  const boundary = Date.parse(H9_CANDIDATE.effective_at);
+  // Build time: generated_at after the boundary but the freeze clock before it.
+  { const { options } = shadowOptions({ now: boundary + 60000 });
+    const { decision, internals } = await build(options);
+    await assert.rejects(buildH9ShadowCapture({ decision, internals, statsSource: options.statsSource, classification: "prospective", clock: (() => { let n = 0; return () => n++ ? boundary - 1000 : boundary + 60000; })() }), /boundary/);
+    await assert.rejects(buildH9ShadowCapture({ decision, internals, statsSource: options.statsSource, classification: "prospective", clock: (() => { let n = 0; return () => n++ ? boundary + 30000 : boundary + 60000; })() }), /precede generated_at/); }
+  // Exact boundary: generated_at = frozen_at = boundary is allowed.
+  { const { options } = shadowOptions({ now: boundary });
+    const { decision, internals } = await build(options);
+    const c = await buildH9ShadowCapture({ decision, internals, statsSource: options.statsSource, classification: "prospective", clock: () => boundary });
+    assert.equal(Date.parse(c.frozen_at), boundary);
+    const directory = await mkdtemp(join(tmpdir(), "fantasy-h9-"));
+    try {
+      assert.equal((await appendH9ShadowCapture(directory, c, { wallClock: boundary + 1000 })).created, true);
+      // Write time refuses tampered chronology or eligibility independently of the builder.
+      const before = new Date(boundary - 1000).toISOString();
+      await assert.rejects(appendH9ShadowCapture(directory, { ...c, frozen_at: before, records: c.records.map(r => ({ ...r, frozen_at: before })) }, { wallClock: boundary + 1000 }), /boundary/);
+      const late = new Date(boundary + 500).toISOString(), early = new Date(boundary + 100).toISOString();
+      await assert.rejects(appendH9ShadowCapture(directory, { ...c, generated_at: late, frozen_at: early, records: c.records.map(r => ({ ...r, generated_at: late, frozen_at: early })) }, { wallClock: boundary + 1000 }), /precede generated_at/);
+      const forged = { ...c, records: c.records.map(r => ({ ...r, prospective_eligibility: { ...r.prospective_eligibility, eligible: true, reason: null } })) };
+      await assert.rejects(appendH9ShadowCapture(directory, forged, { wallClock: boundary + 1000 }), /eligibility/);
+    } finally { await rm(directory, { recursive: true }); }
+  }
+  // Normal chronology still passes and is written.
+  const { capture } = await futureCapture();
+  const directory = await mkdtemp(join(tmpdir(), "fantasy-h9-"));
+  try { assert.equal((await appendH9ShadowCapture(directory, capture, { wallClock: KICKOFF - 590000 })).created, true); assert.ok(capture.records.some(r => r.prospective_eligibility.eligible)); }
+  finally { await rm(directory, { recursive: true }); }
+});
+
+test("blocker 4: prior rows without verified chronology withhold H9", async () => {
+  const ok = [row(2024, 1, 8), row(2025, 1, 12), row(2025, 2, 4)];
+  for (const bad of [row(2025, 0, 9), row(2025, -1, 9), row(2025, 2.5, 9), row(2025, NaN, 9), row(2025, Infinity, 9), row(2025, "3", 9), row(2025, 3, 9, { game_id: "" }), row(2025, 3, 9, { game_id: null }), row(2025, 2, 9, { game_id: "other" })]) {
+    const p = h9Prior([...ok, bad], 2026);
+    assert.equal(p.status, "invalid_input", JSON.stringify(bad)); assert.equal(p.ppg, null);
+  }
+  assert.equal(h9Prior(ok, 2026).status, "present");
+  // Integration: a blank raw week (normalized to 0 upstream) withholds H9 for that player only; production is unchanged.
+  const { capture } = await futureCapture({ priorMutate: rows => rows.map(r => r.player_id === "g1" && r.week === "2" ? { ...r, week: "" } : r) });
+  const g1 = capture.records.find(r => r.player.player_id === "1"), g2 = capture.records.find(r => r.player.player_id === "2");
+  assert.equal(g1.h9.status, "withheld"); assert.match(g1.h9.withheld_reason, /week/); assert.equal(g1.prospective_eligibility.eligible, false);
+  assert.equal(g2.h9.status, "computed");
 });
