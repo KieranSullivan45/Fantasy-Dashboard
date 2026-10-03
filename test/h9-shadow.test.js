@@ -7,22 +7,24 @@ import { gunzipSync } from "node:zlib";
 import { buildDecisionContext } from "../lib/decision/build-context.js";
 import { weeklyFeatures } from "../lib/decision/features.js";
 import { decisionFixtureOptions, source } from "./decision-fixtures.js";
-import { h9Prior, h9Quality, basisCheck, assertClassification, buildH9ShadowCapture, appendH9ShadowCapture, H9_CANDIDATE } from "../lib/shadow/h9.js";
+import { h9Prior, h9Quality, basisCheck, assertClassification, buildH9ShadowCapture, appendH9ShadowCapture, prospectiveEligibility, H9_CANDIDATE } from "../lib/shadow/h9.js";
 
 const NOW = Date.parse("2026-10-05T12:00:00Z");
-const row = (season, week, points, extra = {}) => ({ season, week, points, game_id: `${season}_${week}`, team: "BUF", ...extra });
+const row = (season, week, points, extra = {}) => ({ season, week, points, game_id: `${season}_${week}`, team: "BUF", season_type: "REG", ...extra });
 // Literal port of the retrospective ew2_h16 (research/m4-tier-a/scripts/tier-a.mjs `ew(16)`), used as a cross-check only.
 const retrospective = (prev2, prev) => { const isNum = v => typeof v === "number" && Number.isFinite(v);
   const all = [...prev2, ...prev].filter(r => isNum(r.points)); if (!prev.some(r => isNum(r.points))) return null;
   let s = 0, ws = 0; all.forEach((r, i) => { const wt = 0.5 ** ((all.length - 1 - i) / 16); s += wt * r.points; ws += wt; }); return s / ws; };
 
 /** Fixture where 2026 is current and 2025/2024 carry prior rows; Y−2 load can be made to fail. */
-function shadowOptions({ y2 = "ok" } = {}) {
+function shadowOptions({ y2 = "ok", now = NOW, kickoffDay = null } = {}) {
   const base = decisionFixtureOptions(), calls = [];
   const prior = season => Array.from({ length: 20 }, (_, i) => [1, 2, 3, 4].map(week => ({ player_id: `g${i + 1}`, position: "RB", season: String(season), season_type: "REG",
     week: String(week), game_id: `g${season}_${week}`, team: "BUF", opponent_team: "NE", receptions: String((i + week + season) % 9), passing_tds: "0", targets: "5", carries: String(week) }))).flat();
   const current = base.statsSource;
-  return { calls, options: { ...base, now: NOW, statsSource: async season => { calls.push(season);
+  const scheduleSource = kickoffDay ? async () => source("nflverse_schedule", [1, 2, 3].map(week => ({ game_id: `game${week}`, game_type: "REG", season: "2026", week: String(week), home_team: "BUF", away_team: "NE",
+    gameday: week === 3 ? kickoffDay : "2026-09-13", gametime: "13:00", home_score: week === 3 ? "" : "10", away_score: week === 3 ? "" : "20" }))) : base.scheduleSource;
+  return { calls, options: { ...base, now, scheduleSource, statsSource: async season => { calls.push(season);
     if (season === 2026) return current(); if (season === 2025) return source("nflverse_stats", prior(2025));
     if (y2 === "throw") throw new Error("Y-2 outage"); return source("nflverse_stats", prior(2024)); } } };
 }
@@ -86,16 +88,16 @@ test("production decision is unchanged with shadow capture enabled, failing or a
   const { decision, internals } = await build(options);
   assert.equal(JSON.stringify(decision), plain);
   assert.equal(JSON.stringify(await buildDecisionContext("A", { ...options, shadowObserver: () => { throw new Error("shadow bug"); } })), plain);
-  await buildH9ShadowCapture({ decision, internals, statsSource: options.statsSource, classification: "prospective", wallClock: NOW });
+  await buildH9ShadowCapture({ decision, internals, statsSource: options.statsSource, classification: "prospective", clock: () => NOW });
   assert.equal(JSON.stringify(decision), plain, "shadow build never mutates the decision");
-  await assert.rejects(buildH9ShadowCapture({ decision, internals, statsSource: options.statsSource, classification: "bogus", wallClock: NOW }));
+  await assert.rejects(buildH9ShadowCapture({ decision, internals, statsSource: options.statsSource, classification: "bogus", clock: () => NOW }));
   assert.equal(JSON.stringify(decision), plain);
 });
 
 test("shadow records hold both frozen predictions, identity, basis and missingness", async () => {
   const { options, calls } = shadowOptions();
   const { decision, internals } = await build(options);
-  const capture = await buildH9ShadowCapture({ decision, internals, statsSource: options.statsSource, classification: "prospective", wallClock: NOW, linkedCaptureId: "c1" });
+  const capture = await buildH9ShadowCapture({ decision, internals, statsSource: options.statsSource, classification: "prospective", clock: () => NOW, linkedCaptureId: "c1" });
   assert.ok(calls.includes(2024)); assert.ok(calls.every(s => s <= 2026));
   assert.equal(capture.records.length, Object.keys(decision.player_context).length);
   const withPrior = capture.records.filter(r => r.h9.prior?.status === "present"), without = capture.records.filter(r => r.h9.prior?.status === "absent");
@@ -120,7 +122,7 @@ test("shadow records hold both frozen predictions, identity, basis and missingne
 test("Y−2 outage withholds H9 instead of computing from Y−1 alone", async () => {
   const { options } = shadowOptions({ y2: "throw" });
   const { decision, internals } = await build(options);
-  const capture = await buildH9ShadowCapture({ decision, internals, statsSource: options.statsSource, classification: "prospective", wallClock: NOW });
+  const capture = await buildH9ShadowCapture({ decision, internals, statsSource: options.statsSource, classification: "prospective", clock: () => NOW });
   assert.ok(capture.records.every(r => r.h9.status === "withheld" && r.h9.quality_points === null && r.h9.prior === null));
   assert.ok(capture.records.every(r => r.production.start_value === decision.player_context[r.player.player_id].model.start_value.central));
   assert.equal(capture.records[0].source_versions.prior_y2.status, "unavailable");
@@ -139,8 +141,8 @@ test("prospective and replay cannot be confused", async () => {
   const { decision, internals } = await build(options);
   const directory = await mkdtemp(join(tmpdir(), "fantasy-h9-"));
   try {
-    const prospective = await buildH9ShadowCapture({ decision, internals, statsSource: options.statsSource, classification: "prospective", wallClock: NOW });
-    const replay = await buildH9ShadowCapture({ decision, internals, statsSource: options.statsSource, classification: "replay", wallClock: NOW + 86400000 });
+    const prospective = await buildH9ShadowCapture({ decision, internals, statsSource: options.statsSource, classification: "prospective", clock: () => NOW });
+    const replay = await buildH9ShadowCapture({ decision, internals, statsSource: options.statsSource, classification: "replay", clock: () => NOW + 86400000 });
     assert.notEqual(prospective.records[0].record_id, replay.records[0].record_id);
     const a = await appendH9ShadowCapture(directory, prospective, { wallClock: NOW }), b = await appendH9ShadowCapture(directory, replay, { wallClock: NOW });
     assert.match(a.path, /^shadow\/h9-ew2_h16\/prospective\//); assert.match(b.path, /^shadow\/h9-ew2_h16\/replay\//);
@@ -160,14 +162,56 @@ test("prospective and replay cannot be confused", async () => {
 test("private decisions are never shadow-captured", async () => {
   const { options } = shadowOptions();
   const { decision, internals } = await build(options);
-  await assert.rejects(buildH9ShadowCapture({ decision: { ...decision, visibility: "private" }, internals, statsSource: options.statsSource, classification: "test", wallClock: NOW }), /Private/);
+  await assert.rejects(buildH9ShadowCapture({ decision: { ...decision, visibility: "private" }, internals, statsSource: options.statsSource, classification: "test", clock: () => NOW }), /Private/);
 });
 
 test("deterministic reruns on the same basis give identical H9 predictions", async () => {
   const one = shadowOptions(), two = shadowOptions();
   const x = await build(one.options), y = await build(two.options);
-  const a = await buildH9ShadowCapture({ decision: x.decision, internals: x.internals, statsSource: one.options.statsSource, classification: "prospective", wallClock: NOW });
-  const b = await buildH9ShadowCapture({ decision: y.decision, internals: y.internals, statsSource: two.options.statsSource, classification: "prospective", wallClock: NOW + 60000 });
+  const a = await buildH9ShadowCapture({ decision: x.decision, internals: x.internals, statsSource: one.options.statsSource, classification: "prospective", clock: () => NOW });
+  const b = await buildH9ShadowCapture({ decision: y.decision, internals: y.internals, statsSource: two.options.statsSource, classification: "prospective", clock: () => NOW + 60000 });
   assert.equal(a.capture_id, b.capture_id);
-  assert.deepEqual(a.records, b.records);
+  const strip = rs => rs.map(({ frozen_at, ...r }) => r);
+  assert.deepEqual(strip(a.records), strip(b.records));
+  assert.ok(a.records.every(r => r.frozen_at === a.frozen_at));
+});
+
+test("prospective eligibility needs a freeze before the player's kickoff and a kickoff after the H9 boundary", async () => {
+  const base = { classification: "prospective", h9Status: "computed", frozenAt: "2026-10-11T16:00:00.000Z" };
+  assert.deepEqual([prospectiveEligibility({ ...base, kickoff: "2026-10-11T17:00:00.000Z" }).eligible, prospectiveEligibility({ ...base, kickoff: "2026-10-11T16:00:00.000Z" }).reason], [true, "kickoff_not_after_freeze"]);
+  assert.equal(prospectiveEligibility({ ...base, kickoff: H9_CANDIDATE.effective_at, frozenAt: "2026-10-03T03:00:00.000Z" }).reason, "kickoff_not_after_candidate_boundary");
+  assert.equal(prospectiveEligibility({ ...base, kickoff: null }).reason, "no_target_kickoff");
+  assert.equal(prospectiveEligibility({ ...base, h9Status: "withheld", kickoff: "2026-10-11T17:00:00.000Z" }).reason, "h9_withheld");
+  assert.equal(prospectiveEligibility({ ...base, classification: "replay", kickoff: "2026-10-11T17:00:00.000Z" }).reason, "not_prospective_classification");
+
+  // Week-3 kickoff 2026-10-11 13:00 ET (17:00Z). Freeze before it: eligible. Freeze after it: kept but ineligible.
+  const kickoff = Date.parse("2026-10-11T17:00:00Z");
+  for (const [freeze, eligible] of [[kickoff - 600000, true], [kickoff + 300000, false]]) {
+    const { options } = shadowOptions({ now: kickoff - 1200000, kickoffDay: "2026-10-11" });
+    const { decision, internals } = await build(options);
+    const capture = await buildH9ShadowCapture({ decision, internals, statsSource: options.statsSource, classification: "prospective", clock: () => freeze });
+    assert.equal(capture.frozen_at, new Date(freeze).toISOString());
+    const scheduled = capture.records.filter(r => r.schedule.kickoff === "2026-10-11T17:00:00.000Z" && r.h9.status !== "withheld");
+    assert.ok(scheduled.length);
+    for (const r of scheduled) assert.deepEqual([r.prospective_eligibility.eligible, r.prospective_eligibility.reason], eligible ? [true, null] : [false, "kickoff_not_after_freeze"]);
+  }
+  // The default fixture's kickoff (2026-09-27) precedes the ADR 0009 boundary: retained, never eligible.
+  const { options } = shadowOptions();
+  const { decision, internals } = await build(options);
+  const old = await buildH9ShadowCapture({ decision, internals, statsSource: options.statsSource, classification: "prospective", clock: () => NOW });
+  assert.ok(old.records.length && old.records.every(r => !r.prospective_eligibility.eligible));
+  // A capture written long after its freeze cannot be stored as prospective.
+  const directory = await mkdtemp(join(tmpdir(), "fantasy-h9-"));
+  try { await assert.rejects(appendH9ShadowCapture(directory, { ...old, generated_at: new Date(NOW + 3600000).toISOString() }, { wallClock: NOW + 3600000 }), /freeze time/); }
+  finally { await rm(directory, { recursive: true }); }
+});
+
+test("prior rows need an explicit REG season type and one row per player-game", () => {
+  const ok = [row(2024, 1, 8), row(2025, 1, 12)];
+  const untyped = h9Prior([...ok, { season: 2025, week: 2, points: 9, game_id: "x" }], 2026);
+  assert.equal(untyped.status, "invalid_input"); assert.equal(untyped.ppg, null);
+  // Production rows carry the type on their raw source row (buildProduction keeps REG only).
+  assert.equal(h9Prior([...ok, { season: 2025, week: 2, points: 9, game_id: "x", raw_stats: { season_type: "REG" } }], 2026).status, "present");
+  const dup = h9Prior([...ok, row(2025, 1, 30)], 2026);
+  assert.equal(dup.status, "invalid_input"); assert.match(dup.reason, /Duplicate/);
 });

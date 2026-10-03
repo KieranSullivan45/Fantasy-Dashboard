@@ -27,7 +27,10 @@ never shown to users.
    That includes k's existing last-8 definition: k = 0 when the existing last-8 prior is absent, as in the retrospective
    computation. The record flags that case (`existing_prior_absent_h9_present`). The Y−1 rows are the exact rows production used, passed out by an optional
    `shadowObserver` hook on `buildDecisionState`. Y−2 rows are loaded by the shadow with the same identity map, league
-   scoring and player set. A per-player basis check recomputes production's last-8 prior and Q from those rows. On a
+   scoring and player set. Prior rows must carry an explicit season type (on the row or its raw source row); only `REG`
+   rows count, and a row of unknown type is never assumed to be `REG`. ADR 0009 defines no duplicate resolution, so H9 relies
+   on the existing upstream precondition: `buildProduction` keeps one row per statistical player and `game_id`. If more than one row
+   per player-game still reaches H9, or a row has no season type, H9 is withheld (`invalid_input`) rather than choosing. A per-player basis check recomputes production's last-8 prior and Q from those rows. On a
    mismatch, or if Y−2 is unavailable, H9 is withheld (`null` with a reason) and never computed from partial history.
 3. **Record contents.** Each record holds: `generated_at`; season, week and `data_through_week`; provider and league ID
    (the same public Sleeper identity `observation-1` already archives); the scoring-settings hash and profile; the provider
@@ -41,7 +44,14 @@ never shown to users.
 4. **Prospective vs replay.** `classification` is one of `prospective`, `replay` or `test`. It is part of the record ID
    and of the partition path. A `prospective` record is refused unless its `generated_at` is at or after the ADR 0009
    boundary and within 30 minutes of the wall clock when it is computed and written, so a reconstructed decision cannot be labelled prospective.
-   The worker writes `prospective` only. Replay/test records never share its partition, and a capture mixing
+   The worker writes `prospective` only. Each record also retains `frozen_at`, the time taken after every H9 value in the
+   capture was computed, and a per-player `prospective_eligibility`. A record is eligible only if it is `prospective`, H9 was
+   not withheld, its target game (the decision week's scheduled game, `schedule.game_id`/`kickoff`) kicks off strictly after
+   `frozen_at`, and that kickoff is strictly after the ADR 0009 boundary. Ineligible records stay in the file with
+   their reason (`kickoff_not_after_freeze`, `kickoff_not_after_candidate_boundary`, `no_target_kickoff`, `h9_withheld`).
+   `generated_at` alone never establishes eligibility. A prospective capture is refused if it is written more than
+   30 minutes after `frozen_at`. `frozen_at` is excluded from the record ID, so identical evidence still deduplicates and the
+   first stored freeze time is kept. Replay/test records never share its partition, and a capture mixing
    classifications is refused.
 5. **Isolation.** The hook is optional and its exceptions are swallowed. The shadow reads a finished decision without
    mutating it, runs after the production capture is written, and its failure is logged without failing the run. No
