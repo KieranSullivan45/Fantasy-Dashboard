@@ -1,0 +1,511 @@
+{
+ "schema_version": "espn-league-file-1",
+ "provider": "espn",
+ "binding": {
+  "league_id": "424242",
+  "season": 2030
+ },
+ "captured_at": "2030-09-26T12:00:00.000Z",
+ "capture": {
+  "method": "synthetic_fixture",
+  "tool": "test-fixture",
+  "tool_version": "1"
+ },
+ "league": {
+  "id": 424242,
+  "seasonId": 2030,
+  "scoringPeriodId": 3,
+  "settings": {
+   "name": "Synthetic File League",
+   "size": 3,
+   "rosterSettings": {
+    "lineupSlotCounts": {
+     "0": 1,
+     "2": 2,
+     "4": 2,
+     "6": 1,
+     "7": 1,
+     "16": 1,
+     "17": 1,
+     "20": 6,
+     "21": 1,
+     "23": 1,
+     "24": 0
+    }
+   },
+   "scoringSettings": {
+    "scoringItems": [
+     {
+      "statId": 3,
+      "points": 0.04
+     },
+     {
+      "statId": 4,
+      "points": 4
+     },
+     {
+      "statId": 19,
+      "points": 2
+     },
+     {
+      "statId": 20,
+      "points": -2
+     },
+     {
+      "statId": 24,
+      "points": 0.1
+     },
+     {
+      "statId": 25,
+      "points": 6
+     },
+     {
+      "statId": 26,
+      "points": 2
+     },
+     {
+      "statId": 42,
+      "points": 0.1
+     },
+     {
+      "statId": 43,
+      "points": 6
+     },
+     {
+      "statId": 44,
+      "points": 2
+     },
+     {
+      "statId": 53,
+      "points": 0.5
+     },
+     {
+      "statId": 72,
+      "points": -2
+     },
+     {
+      "statId": 86,
+      "points": 1
+     },
+     {
+      "statId": 74,
+      "points": 5
+     }
+    ]
+   },
+   "scheduleSettings": {
+    "matchupPeriods": {
+     "1": [
+      1
+     ],
+     "2": [
+      2
+     ],
+     "3": [
+      3
+     ],
+     "4": [
+      4
+     ]
+    }
+   }
+  },
+  "teams": [
+   {
+    "id": 1,
+    "name": "Synthetic File Team One ",
+    "record": {
+     "overall": {
+      "wins": 2,
+      "losses": 0,
+      "ties": 0,
+      "pointsFor": 240.5,
+      "pointsAgainst": 200.1
+     }
+    },
+    "roster": {
+     "entries": [
+      {
+       "playerId": 910001,
+       "lineupSlotId": 0,
+       "playerPoolEntry": {
+        "player": {
+         "id": 910001,
+         "fullName": "Synthetic QB One",
+         "defaultPositionId": 1,
+         "eligibleSlots": [
+          0,
+          7,
+          20,
+          21
+         ],
+         "proTeamId": 12,
+         "injuryStatus": null,
+         "injured": false
+        }
+       }
+      },
+      {
+       "playerId": 910002,
+       "lineupSlotId": 2,
+       "playerPoolEntry": {
+        "player": {
+         "id": 910002,
+         "fullName": "Synthetic RB One",
+         "defaultPositionId": 2,
+         "eligibleSlots": [
+          2,
+          3,
+          23,
+          7,
+          20,
+          21
+         ],
+         "proTeamId": 28,
+         "injuryStatus": null,
+         "injured": false
+        }
+       }
+      },
+      {
+       "playerId": 910005,
+       "lineupSlotId": 23,
+       "playerPoolEntry": {
+        "player": {
+         "id": 910005,
+         "fullName": "Synthetic Dual RB WR",
+         "defaultPositionId": 3,
+         "eligibleSlots": [
+          2,
+          4,
+          3,
+          5,
+          23,
+          7,
+          20,
+          21
+         ],
+         "proTeamId": 8,
+         "injuryStatus": null,
+         "injured": false
+        }
+       }
+      },
+      {
+       "playerId": 910003,
+       "lineupSlotId": 4,
+       "playerPoolEntry": {
+        "player": {
+         "id": 910003,
+         "fullName": "Synthetic WR One",
+         "defaultPositionId": 3,
+         "eligibleSlots": [
+          4,
+          3,
+          5,
+          23,
+          7,
+          20,
+          21
+         ],
+         "proTeamId": 18,
+         "injuryStatus": null,
+         "injured": false
+        }
+       }
+      },
+      {
+       "playerId": 910004,
+       "lineupSlotId": 21,
+       "playerPoolEntry": {
+        "player": {
+         "id": 910004,
+         "fullName": "Synthetic TE On IR",
+         "defaultPositionId": 4,
+         "eligibleSlots": [
+          6,
+          5,
+          23,
+          7,
+          20,
+          21
+         ],
+         "proTeamId": 13,
+         "injuryStatus": "OUT",
+         "injured": false
+        }
+       }
+      },
+      {
+       "playerId": 910006,
+       "lineupSlotId": 17,
+       "playerPoolEntry": {
+        "player": {
+         "id": 910006,
+         "fullName": "Synthetic K One",
+         "defaultPositionId": 5,
+         "eligibleSlots": [
+          17,
+          20,
+          21
+         ],
+         "proTeamId": 34,
+         "injuryStatus": null,
+         "injured": false
+        }
+       }
+      },
+      {
+       "playerId": -16012,
+       "lineupSlotId": 16,
+       "playerPoolEntry": {
+        "player": {
+         "id": -16012,
+         "fullName": "Synthetic D/ST One",
+         "defaultPositionId": 16,
+         "eligibleSlots": [
+          16,
+          20,
+          21
+         ],
+         "proTeamId": 12,
+         "injuryStatus": null,
+         "injured": false
+        }
+       }
+      },
+      {
+       "playerId": 910007,
+       "lineupSlotId": 20,
+       "playerPoolEntry": {
+        "player": {
+         "id": 910007,
+         "fullName": "Synthetic RB Bench",
+         "defaultPositionId": 2,
+         "eligibleSlots": [
+          2,
+          3,
+          23,
+          7,
+          20,
+          21
+         ],
+         "proTeamId": 26,
+         "injuryStatus": "QUESTIONABLE",
+         "injured": true
+        }
+       }
+      },
+      {
+       "playerId": 990001,
+       "lineupSlotId": 20,
+       "playerPoolEntry": {
+        "player": {
+         "id": 990001,
+         "fullName": "Synthetic Unmapped WR",
+         "defaultPositionId": 3,
+         "eligibleSlots": [
+          4,
+          3,
+          5,
+          23,
+          7,
+          20,
+          21
+         ],
+         "proTeamId": 9,
+         "injuryStatus": null,
+         "injured": false
+        }
+       }
+      }
+     ]
+    }
+   },
+   {
+    "id": 2,
+    "location": "Synthetic",
+    "nickname": "File Two",
+    "record": {
+     "overall": {
+      "wins": 1,
+      "losses": 1,
+      "ties": 0,
+      "pointsFor": 210.0,
+      "pointsAgainst": 220.4
+     }
+    },
+    "roster": {
+     "entries": [
+      {
+       "playerId": 920001,
+       "lineupSlotId": 0,
+       "playerPoolEntry": {
+        "player": {
+         "id": 920001,
+         "fullName": "Synthetic QB Two",
+         "defaultPositionId": 1,
+         "eligibleSlots": [
+          0,
+          7,
+          20,
+          21
+         ],
+         "proTeamId": 2,
+         "injuryStatus": null,
+         "injured": false
+        }
+       }
+      },
+      {
+       "playerId": 920002,
+       "lineupSlotId": 4,
+       "playerPoolEntry": {
+        "player": {
+         "id": 920002,
+         "fullName": "Synthetic WR Two",
+         "defaultPositionId": 3,
+         "eligibleSlots": [
+          4,
+          3,
+          5,
+          23,
+          7,
+          20,
+          21
+         ],
+         "proTeamId": 4,
+         "injuryStatus": null,
+         "injured": false
+        }
+       }
+      },
+      {
+       "playerId": 930001,
+       "lineupSlotId": 7,
+       "playerPoolEntry": {
+        "player": {
+         "id": 930001,
+         "fullName": "Synthetic QB In OP",
+         "defaultPositionId": 1,
+         "eligibleSlots": [
+          0,
+          7,
+          20,
+          21
+         ],
+         "proTeamId": 15,
+         "injuryStatus": null,
+         "injured": false
+        }
+       }
+      },
+      {
+       "playerId": -16013,
+       "lineupSlotId": 20,
+       "playerPoolEntry": {
+        "player": {
+         "id": -16013,
+         "fullName": "Synthetic D/ST Two",
+         "defaultPositionId": 16,
+         "eligibleSlots": [
+          16,
+          20,
+          21
+         ],
+         "proTeamId": 15,
+         "injuryStatus": null,
+         "injured": false
+        }
+       }
+      }
+     ]
+    }
+   },
+   {
+    "id": 3,
+    "name": "Synthetic File Team Three",
+    "roster": {
+     "entries": [
+      {
+       "playerId": 930002,
+       "lineupSlotId": 6,
+       "playerPoolEntry": {
+        "player": {
+         "id": 930002,
+         "fullName": "Synthetic TE Three",
+         "defaultPositionId": 4,
+         "eligibleSlots": [
+          6,
+          5,
+          23,
+          7,
+          20,
+          21
+         ],
+         "proTeamId": 9,
+         "injuryStatus": null,
+         "injured": false
+        }
+       }
+      },
+      {
+       "playerId": 930009,
+       "lineupSlotId": 20
+      }
+     ]
+    }
+   }
+  ],
+  "schedule": [
+   {
+    "id": 1,
+    "matchupPeriodId": 1,
+    "winner": "HOME",
+    "home": {
+     "teamId": 1,
+     "totalPoints": 120.5
+    },
+    "away": {
+     "teamId": 2,
+     "totalPoints": 101.2
+    }
+   },
+   {
+    "id": 2,
+    "matchupPeriodId": 1,
+    "winner": "UNDECIDED",
+    "home": {
+     "teamId": 3,
+     "totalPoints": 0
+    }
+   },
+   {
+    "id": 3,
+    "matchupPeriodId": 2,
+    "winner": "AWAY",
+    "home": {
+     "teamId": 2,
+     "totalPoints": 108.8
+    },
+    "away": {
+     "teamId": 3,
+     "totalPoints": 110.0
+    }
+   },
+   {
+    "id": 4,
+    "matchupPeriodId": 3,
+    "winner": "UNDECIDED",
+    "home": {
+     "teamId": 1,
+     "totalPoints": 12.5
+    },
+    "away": {
+     "teamId": 3,
+     "totalPoints": 0
+    }
+   }
+  ]
+ }
+}

@@ -42,6 +42,16 @@ Flaim (an MCP service holding the user's ESPN session on its side) was verified 
 
 There is no live transport, OAuth or persistence, and tests use synthetic fixtures only. Production OAuth is not approved: Flaim's documented redirect allowlist does not accept arbitrary web-app callbacks, and permission for a custom web app is unconfirmed.
 
+## Sanitized ESPN league file (local private mode; ADR 0012)
+
+`espn-league-file-1` is a versioned envelope around a strict allow-list of ESPN's own raw field names (binding, capture time, league settings, teams, rosters, schedule, optional observed available players). `lib/providers/espn-file/` validates and maps it to `espn-facts-1` with `source_transport: "league_file"`. Local private mode reads it when the private config's `facts_source.kind` is `espn_league_file`; `pnpm espn:import <file>` validates a file and only then installs it at that path.
+
+- Unknown keys anywhere, credential-like keys, GUID/SWID-shaped values, e-mail addresses, cookie or bearer text, over-long strings, deep nesting, files over 2 MB, future capture times and contradictory league data are refused without echoing values.
+- Scoring stays with the authorized configuration (ADR 0003). File scoring items are only cross-checked on the 20 rules both vocabularies map exactly; a mismatch (including a positional override that differs from its base points) disables scoring. The verdict is bound to the facts it was computed for. Unverified identifiers are never mapped.
+- No owner data is accepted: the roster is chosen with `roster=`; the configured `team_id` is validated only.
+- Available players, when present, are an observed subset with a league free-agent/waiver status; never complete, so the pool gates stay closed.
+- Transactions, acquisition metadata, waiver settings and FAAB are not accepted in v1. No collector exists, and no ESPN request is made.
+
 ## Private access and activation
 
 No account password, cookie form, secret environment variable, hosted credential store or live authentication transport is enabled. The disabled credential interface and normalized AUTH_REQUIRED/AUTH_EXPIRED/PRIVATE_LEAGUE/RATE_LIMITED errors establish a boundary only. No cookie values are returned/logged or included in URLs/bundles.
