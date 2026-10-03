@@ -215,3 +215,27 @@ test("prior rows need an explicit REG season type and one row per player-game", 
   const dup = h9Prior([...ok, row(2025, 1, 30)], 2026);
   assert.equal(dup.status, "invalid_input"); assert.match(dup.reason, /Duplicate/);
 });
+
+test("fixture Q: H9 keeps production's numeric k, so k = 0 when the last-8 prior is absent (frozen M4 semantics)", () => {
+  const prior = [row(2025, 1, 15), ...Array.from({ length: 8 }, (_, i) => row(2025, i + 2, i % 2 ? null : "n/a"))];
+  const current = [row(2026, 1, 10), row(2026, 2, 14)];
+  const f = weeklyFeatures(current, prior, "RB", { season: 2026, week: 3, currentTeam: "BUF" });
+  assert.equal(f.prior.ppg, null); assert.equal(f.prior.effective_games, 0);
+  const p = h9Prior(prior, 2026);
+  assert.equal(p.status, "present"); assert.equal(p.ppg, 15); assert.deepEqual(p.excluded_non_numeric, { y_minus_2: 0, y_minus_1: 8 });
+  assert.equal(basisCheck(f, prior, 2026).status, "consistent");
+  // Retrospective qOf(c, Pew16, c.k): only P changes; k stays 0, so Q equals S.
+  assert.equal(h9Quality(f, p), f.season_ppg); assert.equal(h9Quality(f, p), 12);
+  // Without current-season games, Q is the H9 prior itself.
+  const f0 = weeklyFeatures([], prior, "RB", { season: 2026, week: 1, currentTeam: "BUF" });
+  assert.equal(f0.prior.effective_games, 0); assert.equal(h9Quality(f0, p), 15);
+});
+
+test("changed-team branch: H9 keeps production's k = 1", () => {
+  const prior = Array.from({ length: 6 }, (_, i) => row(2025, i + 1, 6 + i, { team: "MIA" }));
+  const current = [row(2026, 1, 10), row(2026, 2, 14)];
+  const f = weeklyFeatures(current, [row(2024, 1, 20), ...prior], "RB", { season: 2026, week: 3, currentTeam: "BUF" });
+  assert.equal(f.changed_team, true); assert.equal(f.prior.effective_games, 1);
+  const p = h9Prior([row(2024, 1, 20), ...prior], 2026);
+  assert.equal(h9Quality(f, p), (f.season_ppg * 2 + p.ppg * 1) / 3);
+});

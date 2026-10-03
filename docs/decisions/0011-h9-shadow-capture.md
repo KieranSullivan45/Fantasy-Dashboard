@@ -24,8 +24,12 @@ never shown to users.
 2. **Computation (`lib/shadow/h9.js`).** The prior is computed exactly as ADR 0009 states. It uses Y−2 then Y−1 regular-season
    rows. Non-numeric points are excluded before g is assigned. `w_g = 0.5^(g/16)`, and the prior is absent when Y−1 has no
    numeric row. Only P inside Q is replaced. S, n and k are production's values from the same `weeklyFeatures` call.
-   That includes k's existing last-8 definition: k = 0 when the existing last-8 prior is absent, as in the retrospective
-   computation. The record flags that case (`existing_prior_absent_h9_present`). The Y−1 rows are the exact rows production used, passed out by an optional
+   "Preserve k" means reuse the numeric `prior.effective_games` that production's `weeklyFeatures` produced for that case
+   (including k = 1 on the changed-team / role-expansion branch). H9 does not recompute k from whether its own prior exists.
+   This is the frozen retrospective M4 computation: each case stored `k = f.prior.effective_games`, and H9 was scored as
+   `qOf(c, c.Pew16)` with `qOf = (c, P, k = c.k)`. So when production's last-8 prior is absent (k = 0) but `ew2_h16` finds an
+   older numeric Y−1 row, the H9 prior is present and k stays 0. H9 Q then equals S, or the H9 prior when S is absent.
+   The owner confirmed this on 2026-10-03. The record flags the case (`existing_prior_absent_h9_present`). The Y−1 rows are the exact rows production used, passed out by an optional
    `shadowObserver` hook on `buildDecisionState`. Y−2 rows are loaded by the shadow with the same identity map, league
    scoring and player set. Prior rows must carry an explicit season type (on the row or its raw source row); only `REG`
    rows count, and a row of unknown type is never assumed to be `REG`. ADR 0009 defines no duplicate resolution, so H9 relies
