@@ -12,7 +12,7 @@ A transparent, evidence-first assistant for fantasy football managers: one place
 - **Market Value does not exist yet.** It stays `null` until a permitted, validated source exists. Sleeper attention (trending adds) is not Market Value. Its only scoring use is the existing calibrated 5% add-interest component of Pickup Rating; all other attention data is informational.
 - Unknown stays unknown: missing data is null with a warning, never zero or a generic assumption.
 - Calibrated models change only through explicit, validated recalibration.
-- Read-only, free and privacy-preserving by default: no platform writes or paid services without explicit human approval; no scraping or betting data.
+- Read-only, free and privacy-preserving by default: no platform writes or paid services without explicit human approval; no scraping. Betting/odds-derived information may be evaluated as fantasy-football predictive evidence, but production use requires empirical validation and explicit owner approval; wagering functionality is out of scope.
 
 ## Supported use cases (today)
 
