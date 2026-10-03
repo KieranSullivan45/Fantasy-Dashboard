@@ -1,7 +1,7 @@
 # 0009 — M4 Tier-A adjudication: retrospective findings and frozen prospective candidates
 
 - Date: 2026-10-03
-- Status: accepted (owner adjudication of 2026-10-03; recorded on merge of the M4-TIER-A-01 documentation pull request)
+- Status: proposed (owner adjudication of 2026-10-03, amended after the owner's PM review of the pull request; accepted, and effective, at the merge of the M4-TIER-A-01 documentation pull request)
 - Task: M4-TIER-A-01 (M4 of the approved research plan; Tier A under Evaluation Protocol v1)
 - Deciders: repository owner (PM adjudication of the M4 Tier-A report); recorded by Claude Code
 
@@ -35,11 +35,25 @@ Pooled change in MAE vs `Q`, PPR points per player-game (negative = better), Ben
 
 1. **H9** is recorded as *promising but not Tier-A certified*, because the pre-registered §8.4 selection-optimism check
    failed. The protocol is not altered retroactively.
-2. **H9 prospective candidate frozen:** a two-season exponentially weighted prior. Every regular-season game of seasons
-   Y−1 and Y−2 gets weight `0.5^(g/16)`, where g is the number of games ago (half-life 16 games). It replaces the
-   last-8 prior mean inside `Q`, with the same `k` rule, and requires at least one season Y−1 game (otherwise the prior
-   is absent, as today). This is the `ew2_h16` variant of the analysis plan.
-3. **H1** is recorded as a prospective candidate. No production change.
+2. **H9 prospective candidate (`ew2_h16`).** The definition below replaces only the last-8 prior mean P inside `Q`. Everything
+   else in `Q` and `weeklyFeatures` is unchanged.
+   - Included games: season Y−1 and Y−2 regular-season player-game rows, selected with the same eligibility and missingness
+     semantics as the existing `Q` prior. That means the player's regular-season stat rows for the season, whatever the team,
+     with only rows whose points are numeric contributing. A missing row is never a zero, and postseason games are excluded.
+   - Weights: `w_g = 0.5^(g/16)`, where g is the number of included prior player-games ago (g = 0 for the most recent
+     included game). g is not counted in elapsed team or calendar weeks. The prior is the weighted mean `Σ w_g·points_g / Σ w_g`,
+     with the weights normalized over the included games only.
+   - Absence: if the player has no included season Y−1 game, the prior is absent, exactly as today. There is no silent
+     fallback to Y−2 alone.
+   - `k` behaviour is preserved, including the changed-team / role-expansion branch (`k = 1`) and its existing definitions.
+   - **Effective boundary.** The candidate becomes authoritative at the merge of the pull request that accepts this ADR. It
+     is not backdated. Only 2026 games kicking off after that boundary can enter the prospective H9 evaluation, and every
+     earlier 2026 game is excluded. This is a candidate-specific prospective test period. It does not retroactively make
+     earlier 2026 outcomes H9 evidence.
+3. **H1** is recorded as a *prospective candidate pending freeze specification*. The completed retrospective run used
+   age at September 1 of season Y, accepted as an M4 operational choice for that run only. It does not define the
+   prospective H1 candidate. A separate freeze task must specify one deterministic prospective procedure and parameter set,
+   for example fixed age-band adjustments and their fitting seasons, before H1 is scored. No production change.
 4. **H2** is recorded as *unsupported / partially testable*. Under the 50-unique-player minimum (§7), only RB and WR
    rounds 2–3 could be fit. Positions are not pooled, the threshold is not relaxed, and the frozen hypothesis is not
    modified.
@@ -47,6 +61,36 @@ Pooled change in MAE vs `Q`, PPR points per player-game (negative = better), Ben
 6. **H10** and **H5** (non-xFP) are *unsupported at Tier-A strength*.
 7. Retrospective (class R) evidence and prospective 2026 validation remain distinct. None of the above is class C or
    L4 evidence, and none authorizes a production, weight, schema, threshold or policy change (§9, class F).
+8. **Archive readiness.** The protocol §12 archive follow-ups are required before any 2026 comparison can be called
+   confirmatory. They do not block implementing a shadow scorer (a separate task). Comparisons against reconstructed or
+   non-frozen baselines remain class X (§3).
+
+## Operational choices of the retrospective M4 run
+
+The analysis plan (`research/m4-tier-a/analysis-plan.md`, shared folder) marked with [OP] each choice the protocol does not fix. These
+adjudications apply to the completed retrospective run only.
+
+**Protocol-fixed, not [OP]:** test seasons and walk-forward roles (§2.4); seasons ≤ 2025 only (§2.2); the frozen hypothesis
+texts and primary tests (§10.1); the birthdate rule (D7, §10.2); unknown draft kept distinct from undrafted (§10.2); the
+50-unique-player cell minimum (§7); paired differences clustered by player and by week with the wider interval reported
+(§8.2); Benjamini–Hochberg (§8.3); the selection-optimism permutation check (§8.4); the 0.05 MAE screen (D3, §8.5);
+participation-conditional scoring with non-participants reported (§4.3, L4).
+
+**Accepted by the owner:** PPR-only scope; rookies admitted only for H2; single-source birthdates treated as unknown;
+pooled weeks 1–8 MAE as the H3 primary; half-life 16 and pooled weeks 1–8 MAE as the H9 primary; H10 "no pick record"
+kept distinct from confirmed undrafted; H5 counting any roster status as on-team; 1,000 bootstrap draws; 20 outcome
+permutations; team-season clustering for H5; age at September 1 of Y (retrospective run only, see decision 3).
+
+**Recorded, not separately adjudicated:**
+- the case-membership rule, i.e. current-season production activity rule, else prior-season last-8 activity;
+- the H1 age bands, and the midpoint date used for birthdates that agree within 30 days;
+- team-season clustering used in place of the degenerate single-week season-week clustering for week-1 and week-4 tests;
+- the other H9 variants run alongside half-life 16 (last-4, last-12, full season, half-life 8);
+- H10's k grid and its pedigree × prior-sample cells;
+- H2's rookie prior with k = 4;
+- H5's outcome (mean per-game share in weeks 1–8, at least 2 games) and its prior (at least 2 prior-season games).
+
+None of these is a protocol amendment.
 
 ## Alternatives considered
 
@@ -54,6 +98,7 @@ Pooled change in MAE vs `Q`, PPR points per player-game (negative = better), Ben
   applied as written. Whether a different null suits window/shrinkage questions is a matter for a future protocol version (§13).
 - **Re-select the H9 window per season prospectively.** Rejected in favour of one frozen variant, so a prospective run involves
   no new selection.
+- **Backdate the H9 freeze to the adjudication date.** Rejected. While this ADR is unmerged, the freeze is not authoritative.
 - **Pool H2 positions or lower the cell minimum to make R1/TE/QB testable.** Rejected. Doing so would change a frozen
   hypothesis after its outcome was seen.
 
@@ -61,14 +106,13 @@ Pooled change in MAE vs `Q`, PPR points per player-game (negative = better), Ben
 
 - Production is unchanged. `decision-0.3.2` / `weekly-features-2`, the calibrated weights and the production xFP
   dependency are untouched. Removing or replacing xFP is a separate owner decision.
-- Prospective validation of the H9 and H1 candidates needs work this ADR does not authorize:
-  - a scorer able to compute shadow candidates on the same cases;
-  - the archive follow-ups in protocol §12 (frozen baselines and alternatives in a new record version);
-  - for H1, a frozen set of age-band adjustments. The Tier-A run refit them per fold, so H1 has no single frozen variant yet.
-- The candidate was frozen on 2026-10-03, after registration (2026-09-29) and after the first 2026 weeks had been played.
-  Only games kicking off after this freeze can count toward any prospective H9 result.
-- The Tier-A run made operational choices the protocol does not fix (marked [OP] in the analysis plan): membership,
-  age bands, 50-player cell suppression, outcome window, team-season clustering, single-source birthdates treated as
-  unknown, and roster status for H5. They were not separately adjudicated.
-- Revisit when a prospective scorer exists, when H4 is run, or when a protocol v2 addresses the §8.4 null for
-  window/shrinkage questions.
+- Prospective work needs separately approved tasks:
+  - a shadow scorer for the H9 candidate;
+  - the §12 archive follow-ups, before any confirmatory claim;
+  - an H1 freeze specification.
+- The candidate-specific H9 test period starts at this ADR's merge. Every 2026 game before it is outside H9's
+  prospective evidence.
+- `docs/v0.3.2.md` and `docs/decision-model-research.md` still state that no betting-derived input is used, which the
+  xFP certificate contradicts (`TASKS.md`, M4-DATA-READINESS-01). Correcting them is a separate follow-up.
+- Revisit when a shadow scorer exists, when H4 is run, when H1 is frozen, or when a protocol v2 addresses the §8.4 null
+  for window/shrinkage questions.
