@@ -1,4 +1,5 @@
-// Local ESPN league-file import (ESPN-FILE-01, ADR 0012): `pnpm espn:import <file> [--config <private-config.json>]`.
+// Local ESPN league-file import (ESPN-FILE-01, ADR 0012): `pnpm --silent espn:import <file> [--config <private-config.json>]`.
+// `--silent` is required for privacy: without it pnpm echoes the script command line, arguments included, before Node runs.
 // Validates a sanitized `espn-league-file-1` file against the private configuration (ESPN_PRIVATE_CONFIG by default) and
 // only then installs it, atomically, at the configuration's `facts_source.path` (outside the repository). No network.
 // Output is a redacted summary: counts, verdicts and warning codes only, never names, ids, paths or file contents.
@@ -7,10 +8,10 @@ import { pathToFileURL } from "node:url";
 import { ProviderError } from "../lib/providers/contracts.js";
 import { readPrivateJson, validatePrivateConfig, MAX_PRIVATE_CONFIG_BYTES } from "../lib/private/config.js";
 import { installLeagueFile } from "../lib/providers/espn-file/file-source.js";
-import { crossCheckEspnScoring } from "../lib/providers/espn-file/scoring-check.js";
+import { crossCheckEspnScoring, crossCheckAllowsScoring } from "../lib/providers/espn-file/scoring-check.js";
 import { snapshotFromEspnFacts } from "../lib/providers/espn-normalize.js";
 
-const USAGE = "Usage: pnpm espn:import <league-file.json> [--config <private-config.json>] (or set ESPN_PRIVATE_CONFIG)";
+const USAGE = "Usage: pnpm --silent espn:import <league-file.json> [--config <private-config.json>] (or set ESPN_PRIVATE_CONFIG). Without --silent, pnpm prints the paths.";
 const fail = (message, code = 1) => { process.stderr.write(`${message}\n`); process.exit(code); };
 
 export function importLeagueFile(argv, { env = process.env, root = process.cwd(), now = Date.now() } = {}) {
@@ -39,7 +40,7 @@ export function importLeagueFile(argv, { env = process.env, root = process.cwd()
       `Lineup slots: ${snapshot.league.roster_positions.length}; unsupported slots: ${snapshot.coverage.unsupported_slots.length}`,
       `Matchups: ${facts.matchups.length} (final: ${finals})`,
       `Available players: ${facts.available ? `observed subset of ${facts.available.players.length}, never complete` : "not included"}`,
-      `Scoring: ${!config.scoring ? "no authorized configuration; scoring unavailable" : `authorized configuration; file cross-check ${check.status} (compared ${check.compared}, mismatched ${check.mismatched}, not compared ${check.not_comparable + check.unverified})${check.status === "mismatch" ? "; scoring will be unavailable" : ""}`}`,
+      `Scoring: ${!config.scoring ? "no authorized configuration; scoring unavailable" : `authorized configuration; file cross-check ${check.status} (compared ${check.compared}, mismatched ${check.mismatched}, missing ${check.missing}, not compared ${check.not_comparable + check.unverified})${crossCheckAllowsScoring(check) ? "" : "; scoring will be unavailable"}`}`,
       `Warning codes: ${codes.join(", ") || "none"}`,
       "Roster selection: pass roster=<team id> explicitly; the configured team is validated only.",
     ] };

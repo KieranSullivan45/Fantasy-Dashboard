@@ -36,6 +36,18 @@
    "scoringSettings": {
     "scoringItems": [
      {
+      "statId": 0,
+      "points": 0
+     },
+     {
+      "statId": 1,
+      "points": 0
+     },
+     {
+      "statId": 2,
+      "points": 0
+     },
+     {
       "statId": 3,
       "points": 0.04
      },
@@ -50,6 +62,10 @@
      {
       "statId": 20,
       "points": -2
+     },
+     {
+      "statId": 23,
+      "points": 0
      },
      {
       "statId": 24,
@@ -80,12 +96,24 @@
       "points": 0.5
      },
      {
+      "statId": 68,
+      "points": 0
+     },
+     {
       "statId": 72,
       "points": -2
      },
      {
+      "statId": 85,
+      "points": 0
+     },
+     {
       "statId": 86,
       "points": 1
+     },
+     {
+      "statId": 88,
+      "points": 0
      },
      {
       "statId": 74,

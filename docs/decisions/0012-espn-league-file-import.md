@@ -19,7 +19,7 @@ The repository already treats one numeric ESPN vocabulary as verified (`ESPN_SLO
    - Every unlisted key is rejected at every level. That covers headers, cookies, URLs, member/owner data, stats, projections, ownership rates, transactions, messages and draft data, so "sanitized" has an enforceable definition.
    - Also rejected:
      - credential-like keys at any depth (the existing `rejectCredentials`);
-     - GUID/SWID-shaped strings (this also catches member IDs) and e-mail addresses;
+     - GUID/SWID-shaped values anywhere inside a string (this also catches member IDs; a rare false-positive name is the accepted cost) and e-mail addresses;
      - `espn_s2=` / `SWID=` / bearer / cookie header text;
      - strings over 128 characters;
      - nesting over 12;
@@ -47,13 +47,17 @@ The repository already treats one numeric ESPN vocabulary as verified (`ESPN_SLO
 
      Flaim and raw-import snapshots were confirmed byte-identical to `main`.
 3. **Scoring authority stays the user-authorized configuration (ADR 0003).**
-   - File facts always carry `scoring.available: false`. The file's scoring items are returned beside the facts and used only by `crossCheckEspnScoring` (`lib/providers/espn-file/scoring-check.js`).
-   - The check compares only the 20 internal rules that both the verified table and the authorized translation produce exactly. An absent rule counts as 0 on either side. Base points are always compared, and a positional override that differs from its base points counts as a mismatch, because the authorized configuration cannot express positional premiums.
+   - File scoring is corroboration only. File facts always carry `scoring.available: false`. The file's scoring items are returned beside the facts and used only by `crossCheckEspnScoring` (`lib/providers/espn-file/scoring-check.js`).
+   - The check compares only the 20 internal rules that both the verified table and the authorized translation produce exactly (`COMPARABLE_SCORING_RULES`).
+   - **Omission has unknown semantics.** No public contract establishes that an omitted ESPN scoring item means zero (and no public counterexample shows nonzero rules being omitted). An omitted rule is therefore never read as 0, and present-but-incomplete evidence does not authorize scoring. There is no file-side completeness flag, and a collector cannot assert completeness.
+   - Base points are always compared, and a positional override that differs from its base points counts as a mismatch, because the authorized configuration cannot express positional premiums.
    - Verdicts:
-     - `consistent` / `not_comparable` / `unavailable`: the configuration is applied as today, with a provenance warning.
-     - `mismatch`: the configuration is not applied, so scoring is unavailable and scoring-dependent analysis refuses. Rosters still load.
+     - `unavailable` (the file has no scoring section): no cross-check occurred; the configuration is applied as today, with a provenance note saying so.
+     - `consistent` (all 20 rules explicitly present and equal): the configuration is applied, with a provenance note.
+     - `mismatch` (an explicitly present rule differs) or `incomplete` (no difference shown, but a rule is absent, including an empty list): the configuration is not applied, so scoring is unavailable and scoring-dependent analysis refuses. Rosters still load.
+   - This restriction is revisited only with new evidence about ESPN's omission semantics, recorded with the change.
    - The verdict is tied to the exact facts object it was computed for, and scoring is resolved from that object, so a file replaced mid-request can never have its scoring applied on another file's verdict.
-   - Unverified identifiers are counted, never mapped. File scoring is never promoted to a source, and no ESPN default is ever assumed.
+   - Unverified and non-comparable identifiers are counted, never mapped, and never satisfy completeness. File scoring is never promoted to a source, and no ESPN default is ever assumed.
 4. **Roster selection is explicit.** A league file carries no owner data, so `user_team_id` is null and `identity.mode` is `spectator` unless the request passes `roster=` (`selected_roster`). The private config's `team_id` is validated against the file's teams and selects nothing. The Flaim source keeps its session-resolved owner.
 5. **Available players are an observed subset.**
    - Optional `available.coverage` must be `observed_subset`.
@@ -66,9 +70,10 @@ The repository already treats one numeric ESPN vocabulary as verified (`ESPN_SLO
    - `scoring` is optional for the league-file kind only; without it, scoring is unavailable.
    - Existing Flaim configurations validate byte-for-byte as before.
    - `lib/providers/flaim/private-source.js` remains the single private composition point: it dispatches on the kind and runs the cross-check. The input revision is `config:<digest>;league_file:<digest>`, so the existing decision cache rebuilds on any byte change and refuses invalid inputs.
-7. **Local import command.** `pnpm espn:import <file> [--config <path>]` (`scripts/espn-file-import.js`):
+7. **Local import command.** `pnpm --silent espn:import <file> [--config <path>]` (`scripts/espn-file-import.js`):
+   - `--silent` is part of the supported command. Without it, pnpm 11 echoes the script command line, paths included, before Node runs, and the script cannot suppress that; `pnpm -s` does not suppress it either. A test runs the exact documented command.
    - It validates the file against the private configuration (binding, team, cross-check).
-   - Only on success does it install the exact validated bytes at the configured path, outside the repository: a temporary file is written and flushed, the current file is kept as `.prev`, then the temporary file is renamed into place.
+   - Only on success does it install the exact validated bytes at the configured path, outside the repository. The destination, the temporary file and `.prev` are each checked through their real existing ancestor before anything is created, so a directory link into the repository is refused: a temporary file is written and flushed, the current file is kept as `.prev`, then the temporary file is renamed into place.
    - It prints a redacted summary (counts, verdicts, warning codes); refusals print only normalized messages.
    - An invalid file never replaces the installed one.
    - The server never falls back to an older file.

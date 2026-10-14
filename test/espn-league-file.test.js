@@ -2,17 +2,17 @@
 // temp files live outside the repository; no network.
 import test from "node:test";
 import assert from "node:assert/strict";
-import {readFileSync,writeFileSync,mkdtempSync,rmSync,existsSync} from "node:fs";
+import {readFileSync,writeFileSync,mkdtempSync,mkdirSync,rmSync,existsSync,symlinkSync,readdirSync} from "node:fs";
 import {spawnSync} from "node:child_process";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {espnFactsFromLeagueFile} from "../lib/providers/espn-file/espn-map.js";
 import {checkLeagueFile,MAX_LEAGUE_FILE_BYTES} from "../lib/providers/espn-file/schema.js";
 import {readSavedLeagueFile,installLeagueFile} from "../lib/providers/espn-file/file-source.js";
-import {crossCheckEspnScoring} from "../lib/providers/espn-file/scoring-check.js";
+import {crossCheckEspnScoring,crossCheckAllowsScoring} from "../lib/providers/espn-file/scoring-check.js";
 import {createPrivateEspnProvider} from "../lib/providers/flaim/private-source.js";
 import {setPrivateEspnProviderFactory,requestProvider} from "../lib/providers/index.js";
-import {loadPrivateConfig,validatePrivateConfig} from "../lib/private/config.js";
+import {loadPrivateConfig,validatePrivateConfig,creationOutsideRepository} from "../lib/private/config.js";
 import {TOKEN_ENV,LOOPBACK_HEADER} from "../lib/private/loopback.js";
 import {snapshotFromEspnFacts,normalizeEspn} from "../lib/providers/espn-normalize.js";
 import {espnFactsFromSavedBundle} from "../lib/providers/flaim/bundle-file.js";
@@ -160,16 +160,28 @@ test("matchups: final weeks keep league totals, undecided totals are withheld, u
 test("scoring: file items are cross-check evidence only and never become facts scoring or defaults",()=>{
  const {facts,observedScoring}=map();
  assert.deepEqual(facts.scoring,{available:false,items:null},"file scoring never becomes the scoring source");
- assert.equal(observedScoring.length,14);
+ assert.equal(observedScoring.length,21);
  const s=snapshotFromEspnFacts(facts);
  assert.deepEqual([s.coverage.scoring_available,s.coverage.scoring_source,s.capabilities.scoringRules],[false,null,false]);assert.deepEqual(s.league.scoring_settings,{});
- assert.deepEqual(crossCheckEspnScoring(observedScoring,SCORING),{status:"consistent",compared:20,mismatched:0,not_comparable:0,unverified:1});
+ const check=items=>crossCheckEspnScoring(items,SCORING),without=id=>observedScoring.filter(i=>i.statId!==id);
+ // 1. Every comparable rule explicitly present and equal → consistent.
+ assert.deepEqual(check(observedScoring),{status:"consistent",compared:20,mismatched:0,missing:0,not_comparable:0,unverified:1});
+ // 2. Complete with one coefficient difference → mismatch.
  const changed=structuredClone(observedScoring);changed.find(i=>i.statId===4).points=6;
- assert.equal(crossCheckEspnScoring(changed,SCORING).status,"mismatch");
- assert.equal(crossCheckEspnScoring(observedScoring.filter(i=>i.statId!==25),SCORING).status,"mismatch","absent in the file but non-zero in the configuration");
- assert.equal(crossCheckEspnScoring([...observedScoring,{statId:0,points:-0.5}],SCORING).status,"mismatch","non-zero in the file but absent in the configuration");
- assert.deepEqual(crossCheckEspnScoring([{statId:999,points:3}],SCORING),{status:"mismatch",compared:20,mismatched:13,not_comparable:0,unverified:1},"unverified ids are never mapped");
- assert.equal(crossCheckEspnScoring(null,SCORING).status,"unavailable");
+ assert.deepEqual(check(changed),{status:"mismatch",compared:20,mismatched:1,missing:0,not_comparable:0,unverified:1});
+ assert.equal(check(changed.filter(i=>i.statId!==0)).status,"mismatch","a shown difference wins over omissions; both fail closed");
+ // 3/4. An omitted comparable rule is never read as zero, whatever the authorized value.
+ assert.deepEqual(check(without(25)),{status:"incomplete",compared:19,mismatched:0,missing:1,not_comparable:0,unverified:1},"omitted, authorized non-zero");
+ assert.deepEqual(check(without(0)),{status:"incomplete",compared:19,mismatched:0,missing:1,not_comparable:0,unverified:1},"omitted, authorized zero");
+ assert.equal(check(observedScoring.map(i=>i.statId===0?{statId:0,points:-0.5}:i)).status,"mismatch","non-zero in the file but zero in the configuration");
+ // 5. An empty scoring list is incomplete, never consistent.
+ assert.deepEqual(check([]),{status:"incomplete",compared:0,mismatched:0,missing:20,not_comparable:0,unverified:0});
+ // 6. No scoring section → unavailable (no cross-check occurred).
+ assert.deepEqual(check(null),{status:"unavailable",compared:0,mismatched:0,missing:0,not_comparable:0,unverified:0});
+ // 8. Unverified or non-comparable ids are counted, never mapped, and never satisfy completeness.
+ assert.deepEqual(check([...without(0),{statId:999,points:0},{statId:83,points:3}]),{status:"incomplete",compared:19,mismatched:0,missing:1,not_comparable:1,unverified:2});
+ assert.deepEqual(check([{statId:999,points:3}]),{status:"incomplete",compared:0,mismatched:0,missing:20,not_comparable:0,unverified:1},"unverified ids are never mapped");
+ assert.deepEqual([check(observedScoring),check([]),check(null),check(changed)].map(crossCheckAllowsScoring),[true,false,true,false]);
 });
 
 test("private config: espn_league_file is additive; Flaim configs are unchanged; team_id validates only",()=>{
@@ -195,7 +207,7 @@ test("private provider: authorized scoring stays the source of record; roster se
   assert.deepEqual([s.coverage.access,s.coverage.source_transport,s.coverage.visibility,s.coverage.scoring_source,s.coverage.scoring_available,s.coverage.nfl_state_verification],
    ["saved_league_file","league_file","private","user_authorized",true,"required"]);
   assert.equal(s.league.scoring_settings.rec,0.5,"authorized value");
-  assert.ok(s.warnings.some(w=>w.code==="PROVENANCE"&&/agree with the authorized scoring configuration on 20/.test(w.message)));
+  assert.ok(s.warnings.some(w=>w.code==="PROVENANCE"&&/agree with the authorized scoring configuration on all 20/.test(w.message)));
   assert.ok(s.warnings.some(w=>w.code==="STALE_DATA_RISK"));
   const mine=await p.getSnapshot(LEAGUE,{rosterId:1});assert.deepEqual([mine.identity.mode,mine.my_roster.roster_id],["selected_roster",1]);
   await assert.rejects(p.getSnapshot(LEAGUE,{rosterId:9}),refused("LEAGUE_NOT_FOUND"));
@@ -232,7 +244,7 @@ test("scoring cross-check mismatch or a missing configuration fails closed; scor
  try{
   const s=await provider(absent.env).getSnapshot(LEAGUE);
   assert.equal(s.coverage.scoring_source,"user_authorized","the transcription stays the authority");assert.equal(s.league.scoring_settings.pass_td,4);
-  assert.ok(s.warnings.some(w=>/carries no scoring items/.test(w.message)));
+  assert.ok(s.warnings.some(w=>/no scoring section, so no file cross-check occurred/.test(w.message)));
  }finally{absent.cleanup();}
 });
 
@@ -247,7 +259,7 @@ test("review regressions: a file swapped mid-request is never scored; positional
  }finally{swap.cleanup();}
  const {observedScoring}=map(),item=key=>observedScoring.find(i=>i.statId===key);
  const premium=structuredClone(observedScoring);premium.find(i=>i.statId===53).pointsOverrides={"4":1};
- assert.deepEqual(crossCheckEspnScoring(premium,SCORING),{status:"mismatch",compared:20,mismatched:1,not_comparable:0,unverified:1},"a positional premium cannot be shown to agree");
+ assert.deepEqual(crossCheckEspnScoring(premium,SCORING),{status:"mismatch",compared:20,mismatched:1,missing:0,not_comparable:0,unverified:1},"a positional premium cannot be shown to agree");
  const same=structuredClone(observedScoring);same.find(i=>i.statId===53).pointsOverrides={"4":item(53).points};
  assert.equal(crossCheckEspnScoring(same,SCORING).status,"consistent","an override equal to its base is no premium");
  const both=structuredClone(observedScoring);Object.assign(both.find(i=>i.statId===53),{points:1,pointsOverrides:{"4":1}});
@@ -370,7 +382,7 @@ test("espn:import validates before installing, keeps the previous file and print
   const ok=importLeagueFile([incoming],{env:f.env,now:NOW});
   assert.equal(ok.exit,0,ok.lines.join("\n"));
   const text=ok.lines.join("\n");
-  assert.match(text,/Teams: 3; roster entries: 15/);assert.match(text,/cross-check consistent \(compared 20, mismatched 0, not compared 1\)/);assert.match(text,/Available players: not included/);
+  assert.match(text,/Teams: 3; roster entries: 15/);assert.match(text,/cross-check consistent \(compared 20, mismatched 0, missing 0, not compared 1\)/);assert.match(text,/Available players: not included/);
   for(const leak of ["Synthetic",LEAGUE,"910001",f.dir])assert.ok(!text.includes(leak),`summary leaks ${leak}`);
   assert.equal(JSON.parse(readFileSync(f.leaguePath,"utf8")).captured_at,"2026-09-27T12:00:00Z");assert.equal(JSON.parse(readFileSync(`${f.leaguePath}.prev`,"utf8")).captured_at,"2026-09-26T12:00:00Z");
   for(const bad of [file(x=>{x.espn_s2="fake-cookie-secret";}),file(x=>{x.binding.league_id="777777";x.league.id=777777;}),file(x=>{team(x,1).name="Synthetic Leak Name";team(x,3).id=1;})]){
@@ -392,4 +404,109 @@ test("espn:import validates before installing, keeps the previous file and print
   assert.equal(refusedRun.status,1);assert.ok(!refusedRun.stderr.includes(f.dir),refusedRun.stderr);
   assert.ok(!existsSync(join(process.cwd(),"league.json")));
  }finally{f.cleanup();}
+});
+
+test("Codex blocker 1: partial scoring evidence never authorizes scoring; an absent section is not a cross-check",async()=>{
+ const items=f=>f.league.settings.scoringSettings.scoringItems;
+ const cases=[
+  ["omitted, authorized non-zero",f=>{f.league.settings.scoringSettings.scoringItems=items(f).filter(i=>i.statId!==25);},/omit 1 comparable rule/],
+  ["omitted, authorized zero",f=>{f.league.settings.scoringSettings.scoringItems=items(f).filter(i=>i.statId!==0);},/omit 1 comparable rule/],
+  ["empty list",f=>{f.league.settings.scoringSettings.scoringItems=[];},/omit 20 comparable rule/],
+  ["unverified extras do not fill a gap",f=>{f.league.settings.scoringSettings.scoringItems=[...items(f).filter(i=>i.statId!==88),{statId:999,points:0},{statId:83,points:3}];},/omit 1 comparable rule/],
+  ["differing positional override",f=>{items(f).find(i=>i.statId===53).pointsOverrides={"4":1};},/disagree/],
+  ["Codex reproduction: statId 0 at -0.5",f=>{items(f).find(i=>i.statId===0).points=-0.5;},/disagree/],
+ ];
+ for(const [label,edit,warning]of cases){
+  const folder=privateFolder({league:file(edit)});
+  try{
+   const p=provider(folder.env),s=await p.getSnapshot(LEAGUE,{rosterId:1});
+   assert.deepEqual([s.coverage.scoring_available,s.coverage.scoring_source],[false,null],label);assert.deepEqual(s.league.scoring_settings,{},label);
+   assert.ok(s.warnings.some(w=>w.code==="UNSUPPORTED_FEATURE"&&warning.test(w.message)),label);
+   assert.equal(s.rosters.length,3,`${label}: rosters still load`);
+   await assert.rejects(p.getDecisionContext(LEAGUE,{rosterId:1}),refused("UNSUPPORTED_FEATURE"),label);
+  }finally{folder.cleanup();}
+ }
+ // Codex reproduction: removing the disagreeing item no longer turns the verdict consistent.
+ const removed=privateFolder({league:file(f=>{f.league.settings.scoringSettings.scoringItems=items(f).filter(i=>i.statId!==0);})});
+ try{
+  const incoming=join(removed.dir,"incoming.json");writeFileSync(incoming,readFileSync(removed.leaguePath));
+  const r=importLeagueFile([incoming],{env:removed.env,now:NOW});
+  assert.match(r.lines.join("\n"),/cross-check incomplete \(compared 19, mismatched 0, missing 1, not compared 1\); scoring will be unavailable/);
+ }finally{removed.cleanup();}
+ const absent=privateFolder({league:file(f=>{delete f.league.settings.scoringSettings;})});
+ try{
+  const s=await provider(absent.env).getSnapshot(LEAGUE);
+  assert.deepEqual([s.coverage.scoring_available,s.coverage.scoring_source],[true,"user_authorized"],"no file evidence: the transcription stays the authority");
+  assert.ok(s.warnings.some(w=>w.code==="PROVENANCE"&&/no file cross-check occurred/.test(w.message)));
+ }finally{absent.cleanup();}
+});
+
+test("Codex blocker 2: install targets are checked through their real existing ancestor; links into the repository are refused",()=>{
+ const base=mkdtempSync(join(tmpdir(),"espn-install-")),repo=join(base,"repo"),outside=join(base,"outside");
+ mkdirSync(join(repo,"data"),{recursive:true});mkdirSync(outside);
+ const source=join(outside,"incoming.json"),installed=join(outside,"league.json");writeFileSync(source,JSON.stringify(file()));
+ const opts={root:repo,now:NOW},repoFiles=()=>readdirSync(join(repo,"data")).sort();
+ try{
+  // 1. Existing outside directory, new leaf: allowed.
+  assert.equal(creationOutsideRepository(join(outside,"new","deeper.json"),repo),true);
+  installLeagueFile(source,installed,opts);assert.ok(existsSync(installed));
+  const before=readFileSync(installed,"utf8");
+  // 2. Outside-looking directory that is a link into the repository, new leaf: refused, nothing created.
+  symlinkSync(join(repo,"data"),join(outside,"linked"),"junction");
+  assert.equal(creationOutsideRepository(join(outside,"linked","league.json"),repo),false);
+  assert.throws(()=>installLeagueFile(source,join(outside,"linked","league.json"),opts),refused("PRIVATE_CONFIG_INVALID"));
+  assert.deepEqual(repoFiles(),[],"nothing is written into the repository");
+  // 3. Existing destination that is a link into the repository: refused.
+  writeFileSync(join(repo,"data","target.json"),"{}");symlinkSync(join(repo,"data","target.json"),join(outside,"dest.json"));
+  assert.throws(()=>installLeagueFile(source,join(outside,"dest.json"),opts),refused("PRIVATE_CONFIG_INVALID"));
+  assert.equal(readFileSync(join(repo,"data","target.json"),"utf8"),"{}");
+  // 4. Existing `.prev` that is a link into the repository: refused; the installed file is unchanged.
+  writeFileSync(join(repo,"data","prev.json"),"{}");symlinkSync(join(repo,"data","prev.json"),`${installed}.prev`);
+  assert.throws(()=>installLeagueFile(source,installed,opts),refused("PRIVATE_CONFIG_INVALID"));
+  assert.equal(readFileSync(join(repo,"data","prev.json"),"utf8"),"{}");assert.equal(readFileSync(installed,"utf8"),before,"6. a refused install leaves the active file unchanged");
+  rmSync(`${installed}.prev`);
+  // A dangling link is refused rather than resolved lexically.
+  symlinkSync(join(repo,"data","missing.json"),join(outside,"dangling.json"));assert.equal(creationOutsideRepository(join(outside,"dangling.json"),repo),false);
+  // 5. Source that is a link into the repository: refused.
+  writeFileSync(join(repo,"data","source.json"),JSON.stringify(file()));symlinkSync(join(repo,"data","source.json"),join(outside,"source-link.json"));
+  assert.throws(()=>installLeagueFile(join(outside,"source-link.json"),installed,opts),refused("PRIVATE_CONFIG_INVALID"));
+  assert.equal(readFileSync(installed,"utf8"),before);
+  // A failed write (destination directory missing) also leaves the active file unchanged and creates nothing.
+  assert.throws(()=>installLeagueFile(source,join(outside,"absent-dir","league.json"),opts),refused("PRIVATE_CONFIG_INVALID"));
+  assert.ok(!existsSync(join(outside,"absent-dir")));
+  // Existing read-path checks are unchanged.
+  assert.throws(()=>readSavedLeagueFile(join(outside,"source-link.json"),opts),refused("PRIVATE_CONFIG_INVALID"));
+ }finally{rmSync(base,{recursive:true,force:true});}
+});
+
+test("Codex blocker 3: GUID/SWID-shaped identifiers are refused anywhere inside an allowed text field",()=>{
+ const ids=["{ABCDEF12-3456-7890-ABCD-EF1234567890}","Owner {ABCDEF12-3456-7890-ABCD-EF1234567890}","prefix ABCDEF12-3456-7890-ABCD-EF1234567890 suffix","abcdef12-3456-7890-abcd-ef1234567890"];
+ const fields=[(f,v)=>{team(f,1).name=v;},(f,v)=>{team(f,2).location=v;},(f,v)=>{team(f,3).nickname=v;},(f,v)=>{f.league.settings.name=v;},
+  (f,v)=>{f.league.teams[0].roster.entries[0].playerPoolEntry.player.fullName=v;},(f,v)=>{f.capture.tool=v;}];
+ for(const id of ids)for(const [i,set]of fields.entries())
+  assert.throws(()=>map(file(f=>set(f,id))),e=>e.code==="INVALID_IMPORT"&&noValues(e,id,"ABCDEF12"),`field ${i}: ${id}`);
+ assert.doesNotThrow(()=>map(file(f=>{team(f,1).name="Team 2030-09 Champs";})),"ordinary text with numbers and hyphens still passes");
+});
+
+test("Codex blocker 4: the documented pnpm --silent espn:import command prints no private paths",()=>{
+ const sourceDir=mkdtempSync(join(tmpdir(),"DistinctSourceParent-")),f=privateFolder({league:file(x=>{x.captured_at="2026-01-01T00:00:00Z";})});
+ const incoming=join(sourceDir,"incoming.json");writeFileSync(incoming,JSON.stringify(file(x=>{x.captured_at="2026-01-02T00:00:00Z";})));
+ const env={...process.env};delete env.ESPN_PRIVATE_CONFIG;delete env.FANTASY_PRIVATE_MODE;
+ const pnpm=args=>spawnSync("pnpm",["--silent","espn:import",...args],{env,encoding:"utf8",shell:process.platform==="win32"});
+ const leaks=out=>[incoming,sourceDir,f.configPath,f.dir,"DistinctSourceParent","espn-file-test-"].filter(v=>out.includes(v));
+ try{
+  const ok=pnpm([incoming,"--config",f.configPath]),out=ok.stdout+ok.stderr;
+  assert.equal(ok.status,0,out);assert.match(ok.stdout,/accepted and installed/);assert.deepEqual(leaks(out),[]);
+  assert.equal(JSON.parse(readFileSync(f.leaguePath,"utf8")).captured_at,"2026-01-02T00:00:00Z");
+  writeFileSync(incoming,JSON.stringify(file(x=>{x.espn_s2="fake-cookie-secret";})));
+  const bad=pnpm([incoming,"--config",f.configPath]),badOut=bad.stdout+bad.stderr;
+  assert.notEqual(bad.status,0);assert.match(badOut,/Import refused/);assert.deepEqual(leaks(badOut),[]);assert.ok(!badOut.includes("fake-cookie-secret"));
+  const missing=pnpm([join(sourceDir,"missing.json"),"--config",f.configPath]);assert.notEqual(missing.status,0);assert.deepEqual(leaks(missing.stdout+missing.stderr),[]);
+ }finally{f.cleanup();rmSync(sourceDir,{recursive:true,force:true});}
+ // Every documented invocation uses --silent.
+ for(const doc of ["../docs/providers/espn.md","../docs/providers.md","../docs/decisions/0012-espn-league-file-import.md","../ARCHITECTURE.md","../.env.example","../scripts/espn-file-import.js"]){
+  const text=readFileSync(new URL(doc,import.meta.url),"utf8");
+  assert.ok(text.includes("pnpm --silent espn:import"),`${doc} documents the silent command`);
+  assert.ok(!/pnpm espn:import [<\w]/.test(text),`${doc} documents an invocation without --silent`);
+ }
 });
