@@ -353,15 +353,16 @@ test("K: leagues, users, explicit rosters, spectators and seasons stay isolated"
   assert.equal(builds.length, 3);
 });
 
-test("L: private mode keeps its own revision path; public refresh never reaches private ESPN", async () => {
+test("L: private mode keeps its own revision path; a refresh without the loopback proof never reaches private ESPN", async () => {
   const saved = { mode: process.env.FANTASY_PRIVATE_MODE, config: process.env.ESPN_PRIVATE_CONFIG, vercel: process.env.VERCEL, token: process.env[TOKEN_ENV] };
   const TOKEN = "cd".repeat(32);
   let privateTouched = 0;
   Object.assign(process.env, { FANTASY_PRIVATE_MODE: "local", ESPN_PRIVATE_CONFIG: "/nonexistent/espn-private.json", [TOKEN_ENV]: TOKEN }); delete process.env.VERCEL;
   setPrivateEspnProviderFactory(() => { privateTouched++; throw new Error("private provider must not be built"); });
   try {
+    // ESPN-LIVE-01 (ADR 0013): only a guarded loopback request may refresh private ESPN; one lacking the connection proof is public.
     const response = await handleRefreshRequest(new Request("http://127.0.0.1:3000/api/refresh", { method: "POST",
-      headers: { host: "127.0.0.1:3000", origin: "http://127.0.0.1:3000", "content-type": "application/json", [LOOPBACK_HEADER]: TOKEN }, body: JSON.stringify({ provider: "espn", league: "424242" }) }));
+      headers: { host: "127.0.0.1:3000", origin: "http://127.0.0.1:3000", "content-type": "application/json", [LOOPBACK_HEADER]: "ef".repeat(32) }, body: JSON.stringify({ provider: "espn", league: "424242" }) }));
     assert.equal(response.status, 422); assert.match(response.headers.get("cache-control"), /no-store/);
     assert.equal((await response.json()).code, "UNSUPPORTED_FEATURE"); assert.equal(privateTouched, 0);
   } finally {

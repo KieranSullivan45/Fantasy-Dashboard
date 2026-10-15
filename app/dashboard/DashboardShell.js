@@ -39,9 +39,17 @@ export function SyncStatus({ data }) {
     {failed.length ? <span className="syncFailed"> · Not updated, previous data kept: {failed.map(r => `${r.name} (${r.error?.message || "unavailable"})`).join("; ")}</span> : null}
   </div>;
 }
+/** Private ESPN provenance (ADR 0013): live via Flaim with its last fetch time, or a saved local source. */
+export function SourceLine({ data }) {
+  const c = data?.coverage;
+  if (c?.provider !== "espn") return null;
+  if (c.access === "flaim_live") return <div className="syncStatus muted" aria-label="Data source">Live via Flaim · read-only{c.fetched_at ? ` · last refreshed ${clock(c.fetched_at)} (${ago((Date.now() - Date.parse(c.fetched_at)) / 1000)})` : ""}</div>;
+  return <div className="syncStatus muted" aria-label="Data source">Saved private ESPN data{c.captured_at ? ` · captured ${new Date(c.captured_at).toLocaleString()}` : ""}</div>;
+}
 export default function DashboardShell({ children }) {
   const pathname = usePathname(), main = useRef(null), previousPath = useRef(pathname);
   const [selection, setSelection] = useState({ leagueId: "", userId: null, season: null, rosterId: null });
+  const espn = selection.provider === "espn", sourceName = espn ? "ESPN" : "Sleeper";
   const activeKey = selectionKey(selection.leagueId, selection);
   const [snapshot, setSnapshot] = useState({ loading: false, data: null });
   const [loader] = useState(() => createSnapshotLoader(setSnapshot));
@@ -72,19 +80,20 @@ export default function DashboardShell({ children }) {
     const path = `/dashboard/${name.toLowerCase()}`, current = pathname === path, secondary = mobile && name === "More" && moreSections.some(section => pathname === `/dashboard/${section.toLowerCase()}`);
     return <Link key={name} href={path} prefetch={false} aria-current={current ? "page" : undefined} className={current || secondary ? "active" : ""}>{name}{secondary ? <span className="srOnly"> — current section in More</span> : null}</Link>;
   })}</nav>;
-  const query = new URLSearchParams({ league: selection.leagueId, user: selection.userId || "spectator", ...(selection.rosterId ? { roster: String(selection.rosterId) } : {}) }).toString();
+  const query = new URLSearchParams({ league: selection.leagueId, ...(espn ? { provider: "espn" } : { user: selection.userId || "spectator" }), ...(selection.rosterId ? { roster: String(selection.rosterId) } : {}) }).toString();
   return <Context.Provider value={{ selection, data, decision, decisionError, views, setViews, query }}>
     <a className="skipLink" href="#view">Skip to content</a>
     <div className="appShell">
       <aside className="appSidebar"><Link className="brand" href="/dashboard/home">Fantasy<br />Command Center</Link>{nav(false)}</aside>
       <div className="appWorkspace">
-        <header className="shellHeader"><Link className="mobileBrand" href="/dashboard/home">Fantasy Command Center</Link><span className="muted">Read-only Sleeper</span><button disabled={!selection.leagueId || refreshing} aria-busy={refreshing} onClick={() => loader.refresh(selection.leagueId, selection)}>{refreshing ? "Refreshing…" : "Refresh"}</button></header>
+        <header className="shellHeader"><Link className="mobileBrand" href="/dashboard/home">Fantasy Command Center</Link><span className="muted">{espn ? (data?.coverage?.access === "flaim_live" ? "Live via Flaim · read-only ESPN" : "Private ESPN") : "Read-only Sleeper"}</span><button disabled={!selection.leagueId || refreshing} aria-busy={refreshing} onClick={() => loader.refresh(selection.leagueId, selection)}>{refreshing ? "Refreshing…" : "Refresh"}</button></header>
         <AccountManager onChange={setSelection} selection={selection} rosters={data?.rosters || []} leagueName={data?.league.name} management={pathname === "/dashboard/more"} />
-        {selection.leagueId && !data && (!current || current.loading) ? <p className="status" role="status">Syncing live Sleeper data…</p> : null}
-        {data && refreshing ? <p className="status" role="status">Refreshing Sleeper data… current league data stays visible.</p> : null}
+        {selection.leagueId && !data && (!current || current.loading) ? <p className="status" role="status">Syncing live {sourceName} data…</p> : null}
+        {data && refreshing ? <p className="status" role="status">Refreshing {sourceName} data… current league data stays visible.</p> : null}
         {current?.error ? <p className="status error" role="alert">{current.error} <button type="button" onClick={() => loader.refresh(selection.leagueId, selection)}>Retry</button></p> : null}
         {data && current.refreshError ? <p className="status error" role="alert">{current.mismatch ? "Sync mismatch:" : "Refresh failed:"} {current.refreshError} Showing the last good league data. <button type="button" disabled={refreshing} onClick={() => loader.refresh(selection.leagueId, selection)}>Retry</button></p> : null}
         {data ? <SyncStatus data={data} /> : null}
+        {data ? <SourceLine data={data} /> : null}
         {data?.partial ? <details className="status" role="status"><summary>Some league data is unavailable</summary>{data.warnings.map((w,i) => <p key={i}>{w.message}</p>)}</details> : null}
         <main id="view" ref={main} tabIndex={-1} className="routeContent">{children}</main>
       </div>

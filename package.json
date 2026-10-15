@@ -9,6 +9,7 @@
     "dev": "next dev",
     "dev:private": "node scripts/dev-private.js",
     "espn:import": "node scripts/espn-file-import.js",
+    "flaim:connect": "node scripts/flaim-connect.js",
     "build": "next build",
     "start": "next start",
     "test": "node --test test/*.test.js",
