@@ -18,12 +18,12 @@ export interface WaiverTransaction extends Transaction { faab:number|null; }
 export type ProviderCapabilities = Record<string,{status:'available'|'unsupported'|'unavailable';reason:string|null}>;
 // Unavailable capabilities throw a safe ProviderError; null never implies zero.
 export interface FantasyProvider { providerId:ProviderId; getProviderCapabilities():ProviderCapabilities; getSnapshot(id:string,options?:unknown):unknown; getDecisionContext(id:string,options?:unknown):unknown; resolveUser(input:string):unknown; discoverLeagues(options:unknown):unknown; getLeague(id:string,options?:unknown):unknown; getLeagueSettings(id:string,options?:unknown):unknown; getRosters(id:string,options?:unknown):unknown; getMatchups(id:string,options?:unknown):unknown; getTransactions(id:string,options?:unknown):unknown; getWaiverState(id:string,options?:unknown):unknown; getPlayers(id:string,options?:unknown):unknown; getUserRoster(id:string,options?:unknown):unknown; getSeasonState():unknown; getStandings(id:string,options?:unknown):unknown; getDraftPicks(id:string,options?:unknown):unknown; }
-// Internal ESPN facts contract (espn-facts-1): every ESPN source (authorized import, Flaim transport) maps into it and
+// Internal ESPN facts contract (espn-facts-1): every ESPN source (authorized import, Flaim transport, saved league file) maps into it and
 // snapshotFromEspnFacts builds snapshot 0.2 from it. In-memory only; never archived or returned by public routes.
 export interface EspnFactsPlayer { espn_id:string; name:string|null; position:string|null; eligibility:string[]; team:string|null; provider_team_id:number|null; injury_status:string|null; injured:boolean|null; }
 export interface EspnFacts {
  version:'espn-facts-1'; provider:'espn';
- provenance:{ source:string; source_transport:'authorized_import'|'flaim'; access:'authorized_offline'|'flaim_live'; private_live:boolean };
+ provenance:{ source:string; source_transport:'authorized_import'|'flaim'|'league_file'; access:'authorized_offline'|'flaim_live'|'flaim_saved_bundle'|'saved_league_file'; private_live:boolean; visibility?:'private'; captured_at?:string };
  league:{ id:string; season:number; name:string|null; scoring_period:number|null; current_season_verified:boolean; slot_counts:Record<string,number>; matchup_periods:Record<string,number[]>|null; playoff_teams:number|null };
  scoring:{ available:boolean; items:unknown[]|null }; user_team_id:number|null;
  teams:Array<{ id:number; name:string|null; owner_id:string|null; record:StandingsEntry; playoff_seed?:number|null; waiver_rank:number|null; faab:{spent:number|null; budget:number|null};
