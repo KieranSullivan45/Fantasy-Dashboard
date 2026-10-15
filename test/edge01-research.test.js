@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";
 import { assertNotSealed, teamTotals, draftRounds, buildSeasonGames } from "../lib/research/edge01/data.js";
 import { opportunityFeatures, sustained, spikeOnly, ewTwoSeasonPrior, ewAllGames, vipOf } from "../lib/research/edge01/features.js";
-import { buildCaseTable } from "../lib/research/edge01/cases.js";
+import { buildCaseTable, withFormat } from "../lib/research/edge01/cases.js";
 import { ridge, predictLinear } from "../lib/research/edge01/fit.js";
 import { pointMetrics, pairedDelta, flagMetrics, averagePrecision } from "../lib/research/edge01/metrics.js";
 import { runFold, FAMILIES } from "../lib/research/edge01/experiments.js";
@@ -153,4 +153,10 @@ test("production isolation: no production path imports research code and protect
   assert.deepEqual(CALIBRATION.TE.pickup.weights, [0.3, 0.1, 0.4, 0.2]);
   assert.equal(POLICY.priorGames, 4); assert.equal(POLICY.changedRolePriorGames, 1);
   assert.deepEqual(SIGNAL_POLICY, { snapDelta: 0.18, targetDelta: 0.06, carryDelta: 0.15, xfpDelta: 3, marketRelative: 0.5, marketAbsolute: 100, maxPerPlayer: 5 });
+});
+
+test("research formats swap points AND xFP together; a format never inherits PPR xFP", () => {
+  const g = { player_id: "p", points: 20, xfp: 15, fpoe: 5, points_by_format: { ppr: 20, standard: 14 }, xfp_by_format: { ppr: 15, standard: 10 }, fpoe_by_format: { ppr: 5, standard: 4 } };
+  assert.deepEqual([withFormat([g], "standard")[0].points, withFormat([g], "standard")[0].xfp, withFormat([g], "standard")[0].fpoe], [14, 10, 4]);
+  assert.equal(withFormat([g], "half")[0].xfp, null); assert.equal(withFormat([g], "half")[0].points, null);
 });

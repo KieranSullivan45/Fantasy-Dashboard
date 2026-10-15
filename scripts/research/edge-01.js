@@ -7,7 +7,7 @@ import { MODEL_VERSION, FEATURE_VERSION } from "../../lib/decision/model-config.
 import { loadSeasons, RESEARCH_FORMATS, SEALED_SEASON, XFP_FLOOR } from "../../lib/research/edge01/data.js";
 import { buildCaseTable, fitVipModel, withFormat, EW_ALL_HALF_LIVES } from "../../lib/research/edge01/cases.js";
 import { inventory } from "../../lib/research/edge01/features.js";
-import { CONTROLS, FAMILIES, POSITIONS, PRIMARY_FOLDS, DEVELOPMENT_FOLDS, runFold, foldsFor, sustainedRoleChange } from "../../lib/research/edge01/experiments.js";
+import { CONTROLS, FAMILIES, POSITIONS, PRIMARY_FOLDS, DEVELOPMENT_FOLDS, runFold, foldsFor, sustainedRoleChange, attachWeekPositionMeans } from "../../lib/research/edge01/experiments.js";
 import { sliced, pointMetrics, pairedDelta, rng } from "../../lib/research/edge01/metrics.js";
 import { simulate, summarize, SLOTS, ROSTER, TEAMS, LEAGUES_PER_WEEK } from "../../lib/research/edge01/lineup.js";
 import { breakoutRows, evaluateSignals, leadTimes, weeklyReplacement, TIER, GAIN, ROLE_METRIC, DECISION_WEEKS } from "../../lib/research/edge01/breakout.js";
@@ -60,6 +60,8 @@ const leakage = { truncation_invariance_ppr: truncationCanary("ppr", [[2017, 5],
   vip_training_seasons: [2014, 2015, 2016, 2017], notes: ["Rosterable flag uses as-of Q only", "Outcomes are read only from case.outcome", "No 2026 file exists in the data directory or provenance"] };
 log("leakage canary", JSON.stringify(leakage.truncation_invariance_ppr));
 if (leakage.truncation_invariance_ppr.mismatches) throw new Error("Truncation-invariance canary failed");
+// Spread-control inputs (after the canary, which covers every other input): as-of week × position forecast means.
+for (const format of Object.keys(RESEARCH_FORMATS)) for (const s of CASE_SEASONS) attachWeekPositionMeans(tables[format].cases[s]);
 
 // ---------- point forecasts: controls ----------
 const frame = (cases, pred) => cases.map(c => ({ c, pred: pred(c), y: y(c) })).filter(r => numeric(r.pred) && numeric(r.y));
@@ -104,9 +106,15 @@ for (const [id, res] of Object.entries(familyResults)) {
   res.position_delta_vs_Q_pooled = Object.fromEntries(POSITIONS.map(p => [p, pairedDelta(res.pooled_primary.folds.flatMap(Y => frameMap(common(Y), familyPreds[id])).filter(r => r.c.position === p), res.pooled_primary.folds.flatMap(Y => frame(common(Y), CONTROLS.Q.predict)).filter(r => r.c.position === p), { seed: 5, draws: 500 })]));
 }
 
+// Information vs spread: every family against the selected production-shrinkage control on the same primary folds.
+for (const [id, res] of Object.entries(familyResults)) {
+  const fs = res.pooled_primary.folds;
+  res.pooled_primary.vs_prod_shrunk = pairedDelta(fs.flatMap(Y => frameMap(common(Y), familyPreds[id])), fs.flatMap(Y => frameMap(common(Y), familyPreds.X4_prod_shrunk)), { seed: 11 });
+}
+
 // ---------- selection optimism (protocol §8.4) ----------
 log("permutations", PERMUTATIONS);
-const permutation = Object.fromEntries(Object.keys(FAMILIES).map(id => [id, []]));
+const permutation = Object.fromEntries(Object.keys(FAMILIES).map(id => [id, []])), permutationProd = Object.fromEntries(Object.keys(FAMILIES).map(id => [id, []]));
 for (let p = 0; p < PERMUTATIONS; p++) {
   const rand = rng(1000 + p), permY = new Map();
   for (const s of CASE_SEASONS) {
@@ -115,15 +123,18 @@ for (let p = 0; p < PERMUTATIONS; p++) {
   }
   const yp = c => permY.get(c) ?? null;
   for (const id of Object.keys(FAMILIES)) {
-    const prim = PRIMARY_FOLDS.filter(Y => foldsFor(id).includes(Y)), d = [];
-    for (const Y of prim) { const { preds } = runFold(id, ppr, Y, yp); for (const c of common(Y)) { const t = yp(c), a = preds.get(c); if (numeric(t) && numeric(a) && numeric(c.inputs.Q)) d.push(Math.abs(a - t) - Math.abs(c.inputs.Q - t)); } }
-    permutation[id].push(mean(d));
+    const prim = PRIMARY_FOLDS.filter(Y => foldsFor(id).includes(Y)), d = [], dp = [];
+    for (const Y of prim) { const { preds } = runFold(id, ppr, Y, yp); for (const c of common(Y)) { const t = yp(c), a = preds.get(c); if (numeric(t) && numeric(a) && numeric(c.inputs.Q)) { d.push(Math.abs(a - t) - Math.abs(c.inputs.Q - t)); dp.push(Math.abs(a - t) - Math.abs(c.inputs.prod - t)); } } }
+    permutation[id].push(mean(d)); permutationProd[id].push(mean(dp));
   }
 }
 for (const [id, ds] of Object.entries(permutation)) {
   const sorted = [...ds].sort((a, b) => a - b), real = familyResults[id].pooled_primary.vs_Q?.delta_mae;
   familyResults[id].selection_optimism = { permutations: ds.length, permuted_delta_vs_Q_mean: mean(ds), permuted_delta_vs_Q_min: sorted[0] ?? null,
-    real_delta_vs_Q: real, passes: ds.length ? real < sorted[0] : null, note: "Passes when the real pooled Δ vs Q is below (better than) every permuted-outcome Δ. Structurally biased against shrinkage candidates (ADR 0009)." };
+    real_delta_vs_Q: real, passes: ds.length ? real < sorted[0] : null,
+    supplementary_vs_prod: (() => { const p = [...permutationProd[id]].sort((a, b) => a - b), rp = familyResults[id].pooled_primary.vs_prod?.delta_mae;
+      return { permuted_delta_vs_prod_mean: mean(p), permuted_delta_vs_prod_min: p[0] ?? null, real_delta_vs_prod: rp, real_below_every_permutation: p.length ? rp < p[0] : null,
+        note: "Supplementary (not pre-registered): same permutation runs, compared with production, whose forecast spread is similar to the blend candidates" }; })(), note: "Passes when the real pooled Δ vs Q is below (better than) every permuted-outcome Δ. Structurally biased against shrinkage candidates (ADR 0009)." };
 }
 
 // ---------- other formats (parameters chosen on PPR) ----------
