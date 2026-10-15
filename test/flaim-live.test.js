@@ -29,13 +29,14 @@ const code=c=>e=>e.code===c;
 /** Synthetic Flaim: OAuth endpoints + MCP over SSE. Records every request URL; `opts` injects failures. */
 function fakeFlaim(opts={}){
  const state={inFlight:0,maxInFlight:0,urls:[],calls:[],access:new Set([opts.access??ACCESS]),refresh:new Set([REFRESH]),issued:0,methods:[],tokenBodies:[]};
- const bundle=structuredClone(opts.bundle??BUNDLE);
+ const bundle=state.bundle=structuredClone(opts.bundle??BUNDLE);
  const json=(body,status=200,headers={})=>new Response(JSON.stringify(body),{status,headers:{"content-type":"application/json",...headers}});
  const sse=(id,result)=>new Response(`event: message\ndata: ${JSON.stringify({jsonrpc:"2.0",id,result})}\n\n`,{status:200,headers:{"content-type":"text/event-stream"}});
  const tool=(name,args)=>{
   if(opts.throttle?.[name]>0){opts.throttle[name]--;return {isError:true,content:[{type:"text",text:"rate limited"}]};}
   if(opts.fail?.[name])return opts.fail[name]==="isError"?{isError:true,content:[{type:"text",text:"boom"}]}:null;
   const envelope=v=>({content:[{type:"text",text:JSON.stringify(v)}]});
+  const custom=opts.payload?.(name,args);if(custom!==undefined)return envelope(custom);
   if(name==="get_user_session")return envelope(opts.flatSession?{success:true,...bundle.session.data}:bundle.session);
   if(name==="get_league_info")return envelope(bundle.leagueInfo);
   if(name==="get_roster"){const r=bundle.rosters.find(r=>String(r.data.teamId)===args.team_id);return envelope(opts.rosterFor?opts.rosterFor(args.team_id,r):r);}
@@ -52,6 +53,7 @@ function fakeFlaim(opts={}){
   if(u.pathname==="/.well-known/oauth-authorization-server")return json(opts.metadata??{issuer:FLAIM_ORIGIN,authorization_endpoint:`${FLAIM_ORIGIN}/auth/authorize`,token_endpoint:`${FLAIM_ORIGIN}/auth/token`,registration_endpoint:`${FLAIM_ORIGIN}/auth/register`,revocation_endpoint:`${FLAIM_ORIGIN}/auth/revoke`,code_challenge_methods_supported:["S256"],scopes_supported:["mcp:read","mcp:write"]});
   if(u.pathname==="/auth/register"){const body=JSON.parse(init.body);state.registration=body;return json({client_id:"test-client",redirect_uris:body.redirect_uris,token_endpoint_auth_method:"none",...(opts.secret?{client_secret:"s"}:{})},201);}
   if(u.pathname==="/auth/token"){
+   if(opts.tokenGate)await opts.tokenGate;
    const p=new URLSearchParams(init.body);state.tokenBodies.push(Object.fromEntries(p));
    if(opts.tokenStatus)return json({error:"server_error"},opts.tokenStatus);
    if(opts.malformedToken)return json({token_type:"Bearer"});
@@ -64,6 +66,7 @@ function fakeFlaim(opts={}){
    if(opts.mcpStatus)return json({},opts.mcpStatus);
    const bearer=(init.headers?.authorization||"").replace(/^Bearer /,"");
    if(!state.access.has(bearer))return json({error:"invalid_token"},401,{"www-authenticate":"Bearer"});
+   opts.onMcp?.(bearer);
    const m=JSON.parse(init.body);state.methods.push(m.method);
    if(!("id" in m))return new Response(null,{status:202});
    if(m.method==="initialize")return sse(m.id,{protocolVersion:"2025-06-18",capabilities:{tools:{}},serverInfo:{name:"flaim-double"}});
@@ -233,12 +236,13 @@ test("live assembly fails closed on absent league, season mismatch, missing or c
 });
 
 /** A private folder with a flaim_live config (+ auth file) and the provider factory wired to the Flaim double. */
-function livePrivate({scoring=true,opts={},clock}={}){
- const f=authFolder(),configPath=join(f.dir,"espn-private.json"),fl=fakeFlaim(opts);
- const config={schema_version:"espn-private-1",provider:"espn",league_id:LEAGUE,season:SEASON,team_id:1,facts_source:{kind:"flaim_live",auth_path:"flaim-auth.json"},...(scoring?{scoring:structuredClone(SCORING)}:{})};
+function livePrivate({scoring=true,opts={},clock,auth={},teamId=1,fetcher=null}={}){
+ const f=authFolder(auth),configPath=join(f.dir,"espn-private.json"),fl=fakeFlaim(opts);
+ if(fetcher)fl.fetcher=fetcher(fl.fetcher);
+ const config={schema_version:"espn-private-1",provider:"espn",league_id:LEAGUE,season:SEASON,...(teamId!=null?{team_id:teamId}:{}),facts_source:{kind:"flaim_live",auth_path:"flaim-auth.json"},...(scoring?{scoring:structuredClone(SCORING)}:{})};
  writeFileSync(configPath,JSON.stringify(config));
  const env={FANTASY_PRIVATE_MODE:"local",ESPN_PRIVATE_CONFIG:configPath,[TOKEN_ENV]:TOKEN};
- const make=()=>createPrivateEspnProvider({env,loadIds:async()=>({data:[]}),createClient:authPath=>createFlaimMcpClient({authPath,fetcher:fl.fetcher}),...(clock?{now:clock}:{})});
+ const make=()=>createPrivateEspnProvider({env,loadIds:async()=>({data:[]}),createClient:authPath=>createFlaimMcpClient({authPath,fetcher:(u,i)=>fl.fetcher(u,i)}),...(clock?{now:clock}:{})});
  return {...f,...fl,configPath,env,config,make};
 }
 async function withPrivate(p,fn){
@@ -365,4 +369,139 @@ test("dashboard loaders address private ESPN by provider (never user=) and keep 
  await createDecisionLoader(()=>{},fetcher).load(snapshot);
  const d=new URL(urls[3][0],BASE).searchParams;assert.equal(d.get("provider"),"espn");assert.equal(d.has("user"),false);
  const body=tradeRequestBody(snapshot,[]);assert.equal(body.provider,"espn");assert.equal("user" in body,false);
+});
+
+// ---- Codex blockers on PR #22 (each test fails on e723b17) ----
+const GEN_A="a".repeat(32),GEN_B="b".repeat(32);
+const authFile=(path,auth)=>writeFlaimAuth(path,{client_id:"test-client",token_endpoint:`${FLAIM_ORIGIN}/auth/token`,access_expires_at:new Date(Date.now()+3600e3).toISOString(),scope:"mcp:read",...auth});
+
+test("blocker 1: a refresh that changes live facts changes coverage.input_revision, the decision basis and the decision",async()=>{
+ const {decisionBasis}=await import("../lib/decision/basis.js");
+ let t=Date.parse("2030-09-26T12:00:00Z");const p=livePrivate({clock:()=>t});
+ const strip=s=>({...s,coverage:{...s.coverage,input_revision:undefined}});
+ try{await withPrivate(p,async()=>{
+  const s1=await (await handleSnapshotRequest(local(`/api/snapshot?provider=espn&league=${LEAGUE}&compact=0`))).json();
+  assert.match(s1.coverage.input_revision,/^espn-live:[0-9a-f]{64}$/);
+  for(const secret of [ACCESS,REFRESH,p.authPath])assert.equal(s1.coverage.input_revision.includes(secret),false);
+  const d1=await (await handleDecisionRequest(local(`/api/decision-support?provider=espn&league=${LEAGUE}`))).json();
+  assert.equal(d1.basis,decisionBasis(s1),"decision-support reports the snapshot's basis");
+  // Codex's case: a dual RB/WR player becomes WR-only; league, teams and roster membership are otherwise unchanged.
+  const entry=p.state.bundle.rosters[0].data.roster.find(e=>e.playerId===910005);
+  entry.eligiblePositions=["WR","WR","FLEX","OP"];
+  t+=LIVE_MANUAL_COOLDOWN_MS+1;
+  const refreshed=await (await handleRefreshRequest(local("/api/refresh",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({provider:"espn",league:LEAGUE,mode:"manual"})}))).json();
+  const s2=refreshed.snapshot;
+  assert.notEqual(s2.coverage.input_revision,s1.coverage.input_revision);
+  assert.equal(decisionBasis(strip(s2)),decisionBasis(strip(s1)),"without the revision the basis could not see this change");
+  assert.notEqual(decisionBasis(s2),decisionBasis(s1),"the basis changes, so the dashboard reloads decision support");
+  assert.deepEqual([refreshed.input_revision,refreshed.previous_input_revision,refreshed.revision_changed],[s2.coverage.input_revision,s1.coverage.input_revision,true]);
+  const d2=await (await handleDecisionRequest(local(`/api/decision-support?provider=espn&league=${LEAGUE}`))).json();
+  assert.equal(d2.basis,decisionBasis(s2));assert.notEqual(d2.basis,d1.basis,"the old decision is no longer current");
+  // Unchanged facts keep their revision.
+  t+=LIVE_MANUAL_COOLDOWN_MS+1;
+  const same=await (await handleRefreshRequest(local("/api/refresh",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({provider:"espn",league:LEAGUE,mode:"manual"})}))).json();
+  assert.equal(same.snapshot.coverage.input_revision,s2.coverage.input_revision);assert.equal(same.revision_changed,false);
+ });}finally{p.cleanup();}
+});
+
+test("blocker 1: the dashboard decision loader drops the old decision when the refreshed basis changes",async()=>{
+ const {createDecisionLoader}=await import("../lib/decision-loader.js"),{decisionBasis}=await import("../lib/decision/basis.js");
+ const snap=rev=>({league:{league_id:LEAGUE,season:SEASON,scoring_settings:{}},matchup_week:3,identity:{provider:"espn",provider_user_id:null},my_roster:{roster_id:1},rosters:[],coverage:{input_revision:rev}});
+ const states=[],old=snap("espn-live:"+"1".repeat(64)),fresh=snap("espn-live:"+"2".repeat(64));
+ const fetcher=async()=>new Response(JSON.stringify({basis:decisionBasis(old)}),{status:200});
+ const loader=createDecisionLoader(s=>states.push(s),fetcher);
+ await loader.load(fresh);
+ assert.equal(states.at(-1).data,null,"a decision built from the previous live facts is not accepted for the new basis");
+ assert.match(states.at(-1).error,/changed/);
+});
+
+test("blocker 2: reconnecting another Flaim account at the same auth path never reuses the previous account's facts",async()=>{
+ let t=Date.parse("2030-09-26T12:00:00Z");
+ const bundleB=structuredClone(BUNDLE);bundleB.session.data.allLeagues[0].teamId="2";
+ const B=fakeFlaim({bundle:bundleB,access:"acct-b-access"});
+ const p=livePrivate({clock:()=>t,teamId:null,auth:{authorization_generation:GEN_A},
+  fetcher:base=>async(u,i={})=>(i.headers?.authorization||"")==="Bearer acct-b-access"?B.fetcher(u,i):base(u,i)});
+ try{await withPrivate(p,async()=>{
+  const snapshot=async()=>(await handleSnapshotRequest(local(`/api/snapshot?provider=espn&league=${LEAGUE}&compact=0`))).json();
+  const a=await snapshot();
+  assert.equal(a.my_roster.roster_id,1);
+  assert.ok(a.recent_transactions.some(x=>x.visibility==="owner_private"),"account A sees its own pending items");
+  // Ordinary rotation (same generation): new token values, no reload and no new revision inside the TTL.
+  p.state.access.add("test-access-rotated");
+  authFile(p.authPath,{access_token:"test-access-rotated",refresh_token:"test-refresh-rotated",authorization_generation:GEN_A});
+  const calls=p.state.calls.length,rotated=await snapshot();
+  assert.equal(p.state.calls.length,calls,"a token rotation alone does not reload the league");
+  assert.equal(rotated.coverage.input_revision,a.coverage.input_revision);
+  // flaim:connect replaces the authorization with account B at the same path, still inside the TTL.
+  t+=1000;
+  authFile(p.authPath,{access_token:"acct-b-access",refresh_token:"acct-b-refresh",authorization_generation:GEN_B});
+  const b=await snapshot();
+  assert.ok(B.state.calls.length>0,"account B's authorization was used");
+  assert.equal(b.my_roster.roster_id,2,"the new account's team, not the previous one");
+  assert.notEqual(b.coverage.input_revision,a.coverage.input_revision);
+  assert.equal(b.recent_transactions.some(x=>x.visibility==="owner_private"&&x.roster_ids.includes(1)),false,"account A's pending items do not survive the reconnect");
+  for(const g of [GEN_A,GEN_B])assert.equal(JSON.stringify(b).includes(g),false,"the generation is never sent to the browser");
+ });}finally{p.cleanup();}
+ // The generation is a fixed-format random id; files from before it existed stay readable.
+ const f=authFolder();try{assert.equal(readFlaimAuth(f.authPath).authorization_generation,undefined);
+  assert.throws(()=>authFile(f.authPath,{access_token:"x",refresh_token:"y",authorization_generation:"not-hex"}),code("PRIVATE_CONFIG_INVALID"));}finally{f.cleanup();}
+});
+
+test("blocker 3: two clients on the same auth file share one rotating refresh grant",async()=>{
+ const f=authFolder({access_expires_at:new Date(Date.now()-1000).toISOString(),authorization_generation:GEN_A});
+ let open;const gate=new Promise(r=>(open=r));
+ const persistedFirst=[];
+ const {fetcher,state}=fakeFlaim({tokenGate:gate,onMcp:bearer=>persistedFirst.push(readFlaimAuth(f.authPath).access_token===bearer)});
+ const slot=globalThis[Symbol.for("fantasy-dashboard.flaim-refreshes")];
+ try{
+  const clientA=createFlaimMcpClient({authPath:f.authPath,fetcher});
+  const first=clientA.callTool("get_user_session");
+  await new Promise(r=>setTimeout(r,10));
+  // A config revision change creates a second client for the same file while A's grant is still in flight.
+  const clientB=createFlaimMcpClient({authPath:join(f.dir,".","flaim-auth.json"),fetcher});
+  const second=clientB.callTool("get_league_info",{});
+  await new Promise(r=>setTimeout(r,10));
+  open();
+  await Promise.all([first,second]);
+  assert.equal(state.tokenBodies.filter(b=>b.grant_type==="refresh_token").length,1,"exactly one refresh-token grant");
+  const saved=readFlaimAuth(f.authPath);
+  assert.deepEqual([saved.access_token,saved.refresh_token,saved.authorization_generation],["test-access-1","test-refresh-1",GEN_A],"rotation keeps the generation");
+  assert.ok(persistedFirst.length>0&&persistedFirst.every(Boolean),"every MCP call used an access token already persisted");
+  assert.equal(slot.size,0,"the lock entry is removed after the refresh settles");
+ }finally{f.cleanup();}
+ // Different auth files never wait on each other, and a failed grant releases the lock.
+ const g=authFolder({access_expires_at:new Date(Date.now()-1000).toISOString()}),h=authFolder({access_expires_at:new Date(Date.now()-1000).toISOString()});
+ try{
+  let hold;const blocked=new Promise(r=>(hold=r));
+  const slow=fakeFlaim({tokenGate:blocked}),fast=fakeFlaim();
+  const waiting=createFlaimMcpClient({authPath:g.authPath,fetcher:slow.fetcher}).callTool("get_user_session");
+  await createFlaimMcpClient({authPath:h.authPath,fetcher:fast.fetcher}).callTool("get_user_session");
+  hold();await waiting;
+  const dead=fakeFlaim({tokenStatus:400});
+  writeFlaimAuth(g.authPath,{...readFlaimAuth(g.authPath),access_expires_at:new Date(Date.now()-1000).toISOString()});
+  await assert.rejects(createFlaimMcpClient({authPath:g.authPath,fetcher:dead.fetcher}).callTool("get_user_session"));
+  assert.equal(slot.size,0,"a failed refresh releases the lock");
+ }finally{g.cleanup();h.cleanup();}
+});
+
+test("blocker 4: a malformed optional resource is left out with a warning and the valid core league still loads",async()=>{
+ const malformed={
+  standings:[(n)=>n==="get_standings"?{success:true,data:{standings:"bad"}}:undefined,f=>f.teams.every(t=>t.record.wins===null)],
+  matchups:[(n)=>n==="get_matchups"?{success:true,data:{matchups:[{matchupPeriodId:"x"}]}}:undefined,f=>f.matchups.length===0],
+  transactions:[(n)=>n==="get_transactions"?{success:true,data:{transactions:[{transaction_id:1}]}}:undefined,f=>f.transactions===null],
+  freeAgents:[(n,a)=>n==="get_free_agents"&&a.position==="RB"?{success:true,data:{freeAgents:[{playerId:"bad"}]}}:undefined,f=>f.available===null],
+ };
+ for(const [name,[payload,absent]] of Object.entries(malformed)){
+  const {client,f}=liveClient({payload});
+  try{const {facts}=await loadFlaimLiveFacts(client,{leagueId:LEAGUE,season:SEASON,teamId:1,sleep:async()=>{}});
+   assert.equal(facts.teams.length,2,`${name}: the core league loads`);assert.equal(facts.user_team_id,1);
+   assert.ok(absent(facts),`${name}: only that resource is absent, nothing fabricated`);
+   const warned=facts.warnings.filter(w=>w.code==="PROVIDER_UNAVAILABLE");
+   assert.equal(warned.length,1,name);assert.match(warned[0].message,/could not be loaded from Flaim this time; shown as unavailable\./);
+   if(name!=="transactions")assert.ok(facts.transactions,`${name}: other optional resources still load`);
+  }finally{f.cleanup();}
+ }
+ // A well-formed resource that contradicts the core league still fails the whole load closed.
+ const {client,f}=liveClient({payload:n=>n==="get_matchups"?{success:true,data:{matchups:[{matchupPeriodId:1,home:{teamId:99,totalPoints:null},away:{teamId:1,totalPoints:null},winner:null}]}}:undefined});
+ try{await assert.rejects(loadFlaimLiveFacts(client,{leagueId:LEAGUE,season:SEASON}));}finally{f.cleanup();}
 });

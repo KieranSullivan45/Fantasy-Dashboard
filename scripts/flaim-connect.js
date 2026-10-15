@@ -9,7 +9,7 @@ import { spawn } from "node:child_process";
 import { isAbsolute, resolve } from "node:path";
 import { readPrivateJson, validatePrivateConfig, MAX_PRIVATE_CONFIG_BYTES } from "../lib/private/config.js";
 import { FLAIM_CALLBACK_PATH, authorizationUrl, discoverFlaim, exchangeCode, pkcePair, registerClient, stateMatches } from "../lib/providers/flaim/oauth.js";
-import { writeFlaimAuth } from "../lib/providers/flaim/auth-store.js";
+import { newAuthorizationGeneration, writeFlaimAuth } from "../lib/providers/flaim/auth-store.js";
 import { createFlaimMcpClient } from "../lib/providers/flaim/mcp-client.js";
 import { loadFlaimLiveFacts } from "../lib/providers/flaim/live-source.js";
 
@@ -76,7 +76,7 @@ say("Authorization received; state verified.");
 let tokens;
 try { tokens = await exchangeCode(meta, { clientId: client.client_id, code: result.code, redirectUri, verifier }); } catch (error) { fail(safe(error)); }
 result.code = null;
-try { writeFlaimAuth(config.auth_path, { client_id: client.client_id, token_endpoint: meta.token_endpoint, ...tokens }, { root }); } catch (error) { fail(safe(error)); }
+try { writeFlaimAuth(config.auth_path, { client_id: client.client_id, token_endpoint: meta.token_endpoint, ...tokens, authorization_generation: newAuthorizationGeneration() }, { root }); } catch (error) { fail(safe(error)); }
 say("Flaim authorization saved to the private auth file (outside the repository).");
 
 try {
