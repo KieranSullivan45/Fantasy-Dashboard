@@ -32,7 +32,7 @@ Flaim (an MCP service holding the user's ESPN session on its side) was verified 
 - Eligibility keeps QB/RB/WR/TE/K/DEF. Flex groupings and "Rookie" are ignored, and unverified IDP labels are ignored with a warning.
 - The transport exposes no scoring coefficients, owners, waiver priority or FAAB. Without an authorized scoring configuration, scoring-dependent analysis is refused with `UNSUPPORTED_FEATURE`.
 - An authorized scoring configuration (ADR 0003) transcribes the League Info scoring screen for one league and season, and custom values are kept exactly. It enables league-scored production, start values and legal lineups. It never enables Pickup Rating, add/drop, replacement levels or trades, which need a complete available pool. Team D/ST scoring and a few rare per-player rules stay unsupported.
-- **Local private mode (ADR 0005)** serves one configured league from a saved Flaim bundle stored outside the repository. It works only on loopback requests with `private, no-store`, never on chat routes or in history capture. The owner's own pending transactions are visible there only.
+- **Local private mode (ADR 0005)** serves one configured league from live Flaim (ADR 0013), a saved Flaim bundle or a sanitized league file (ADR 0012). It works only on loopback requests with `private, no-store`, never on chat routes or in history capture. The owner's own pending transactions are visible there only.
 - NFL season state is verified, never inferred from the fantasy season phase (ADR 0004). The engine derives the current NFL regular-season week from nflverse schedule kickoffs and loads current-season statistics only when that week equals the ESPN scoring period. Mismatches, off-season dates and missing schedules leave the state unknown.
 - Available players are a capped subset (never a complete pool) with free-agent/waiver state and waiver clear time. ESPN-wide rostered and started rates are discarded.
 - Undecided matchup totals are withheld.
@@ -40,7 +40,25 @@ Flaim (an MCP service holding the user's ESPN session on its side) was verified 
 - Historical weekly rosters keep membership and slots only; their stats and rates are current-time values.
 - Negative D/ST ids and unmapped ids stay unresolved.
 
-There is no live transport, OAuth or persistence, and tests use synthetic fixtures only. Production OAuth is not approved: Flaim's documented redirect allowlist does not accept arbitrary web-app callbacks, and permission for a custom web app is unconfirmed.
+Tests use synthetic fixtures only. Live Flaim exists for local private mode only (below, ADR 0013); hosted or production OAuth is not approved.
+
+## Live ESPN via Flaim (local private mode; ADR 0013)
+
+The dashboard can load the configured ESPN league live and read-only through Flaim. Fantasy Dashboard authenticates to Flaim only, using Flaim's published OAuth: dynamic public-client registration, Authorization Code + PKCE S256, a `http://127.0.0.1:<port>/oauth/callback` loopback redirect, 1-hour access tokens and rotating refresh tokens. It never receives, stores or sends ESPN credentials and makes no request to any ESPN host.
+
+**One-time setup**
+
+1. Connect your ESPN league to Flaim at flaim.app with Flaim's own Chrome extension flow. Nothing ESPN-related is entered into Fantasy Dashboard.
+2. In your private config (outside the repository) set `"facts_source": { "kind": "flaim_live", "auth_path": "flaim-auth.json" }`. `auth_path` is absolute or relative to the config file and must be outside the repository. Keep `league_id`, `season`, the optional `team_id` and your `espn-scoring-1` configuration as before.
+3. Run `pnpm --silent flaim:connect --config /absolute/path/espn-private.json` (`--silent`, because plain `pnpm` echoes the path). Approve Fantasy Dashboard in the browser tab it opens, or paste the printed URL, which carries only OAuth protocol parameters. The command saves the tokens to `auth_path` (owner-only permissions, atomic write) and verifies the league through Flaim, printing counts only.
+
+**Normal use**: run `pnpm dev:private` with `FANTASY_PRIVATE_MODE=local` and `ESPN_PRIVATE_CONFIG` set, then open http://127.0.0.1:3000. The League picker offers "My ESPN league · ESPN (live via Flaim)" first and selects it. The header shows "Live via Flaim" with the last refresh time. No export, upload, DevTools or cookie step is involved.
+
+**Refresh**: opening the dashboard loads current facts, which are reused in memory for 2 minutes. Refresh reloads through Flaim (10-second cooldown), and the visible-only automatic refresh reloads when due. Nothing is persisted, archived or placed in a shared cache.
+
+**Reconnect**: access tokens refresh automatically, and each rotated refresh token is written atomically before the new access token is used. If Flaim rejects the stored authorization (revoked, a year without use, or a missing auth file), the dashboard shows `AUTH_REQUIRED` with the reconnect command: re-run `flaim:connect`.
+
+**Data**: the authenticated session must list the configured league and season exactly, or the load fails. Every team's current roster is required. Standings, matchups, available players (up to 100 per position, never a complete pool) and recent transactions are optional; when Flaim cannot supply one it shows as unavailable with a warning. Your team comes only from the exact Flaim session entry for this league and season; without one the view is spectator (or `roster=`). Scoring still comes only from the authorized configuration. The saved-bundle and league-file sources remain as fallbacks.
 
 ## Sanitized ESPN league file (local private mode; ADR 0012)
 
@@ -54,6 +72,6 @@ There is no live transport, OAuth or persistence, and tests use synthetic fixtur
 
 ## Private access and activation
 
-No account password, cookie form, secret environment variable, hosted credential store or live authentication transport is enabled. The disabled credential interface and normalized AUTH_REQUIRED/AUTH_EXPIRED/PRIVATE_LEAGUE/RATE_LIMITED errors establish a boundary only. No cookie values are returned/logged or included in URLs/bundles.
+No account password, cookie form, secret environment variable or hosted credential store is enabled; the only live authentication is the local-private Flaim OAuth above (ADR 0013). The disabled credential interface and normalized AUTH_REQUIRED/AUTH_EXPIRED/PRIVATE_LEAGUE/RATE_LIMITED errors establish a boundary only. No cookie values are returned/logged or included in URLs/bundles.
 
 First required action for live access is provider permission or a supported authorized integration, not pasting cookies into chat. Only after access is permitted should a separately approved server-only credential implementation be activated: minimum scoped material, authenticated user isolation, no public/private cache mixing, redacted errors, rotation/removal, and documented expiration. Environment/local configuration may suit a single-user local deployment, but is not sufficient tenant isolation for a shared production app. No new hosted service is needed for this limited release.
