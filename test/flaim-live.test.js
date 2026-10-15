@@ -33,6 +33,7 @@ function fakeFlaim(opts={}){
  const json=(body,status=200,headers={})=>new Response(JSON.stringify(body),{status,headers:{"content-type":"application/json",...headers}});
  const sse=(id,result)=>new Response(`event: message\ndata: ${JSON.stringify({jsonrpc:"2.0",id,result})}\n\n`,{status:200,headers:{"content-type":"text/event-stream"}});
  const tool=(name,args)=>{
+  if(opts.throttle?.[name]>0){opts.throttle[name]--;return {isError:true,content:[{type:"text",text:"rate limited"}]};}
   if(opts.fail?.[name])return opts.fail[name]==="isError"?{isError:true,content:[{type:"text",text:"boom"}]}:null;
   const envelope=v=>({content:[{type:"text",text:JSON.stringify(v)}]});
   if(name==="get_user_session")return envelope(opts.flatSession?{success:true,...bundle.session.data}:bundle.session);
@@ -185,7 +186,7 @@ test("live assembly: exact league/season, authenticated team, every roster, opti
  }finally{f.cleanup();}
  // Optional failures leave the core league loaded with explicit warnings.
  const opt=liveClient({fail:{get_standings:"isError",get_transactions:"down",get_free_agents:"isError"}});
- try{const {facts}=await loadFlaimLiveFacts(opt.client,{leagueId:LEAGUE,season:SEASON});
+ try{const {facts}=await loadFlaimLiveFacts(opt.client,{leagueId:LEAGUE,season:SEASON,sleep:async()=>{}});
   assert.equal(facts.teams.length,2);assert.equal(facts.transactions,null);assert.equal(facts.available,null);
   assert.equal(facts.warnings.filter(w=>w.code==="PROVIDER_UNAVAILABLE").length,3);}finally{opt.f.cleanup();}
 });
@@ -200,11 +201,26 @@ test("live Flaim's flat get_user_session answer is accepted; Flaim tool calls ar
   assert.equal(state.maxInFlight,1,"Flaim throttles bursts, so a league load never has two tool calls in flight");}finally{f.cleanup();}
 });
 
+test("throttled Flaim calls are retried with bounded backoff: core several times, optional resources once",async()=>{
+ const {client,state,f}=liveClient({throttle:{get_roster:2,get_standings:2,get_matchups:1}});
+ const slept=[];
+ try{const {facts}=await loadFlaimLiveFacts(client,{leagueId:LEAGUE,season:SEASON,teamId:1,sleep:async ms=>{slept.push(ms);}});
+  assert.equal(facts.teams.length,2,"every roster still loads after the throttle clears");
+  assert.deepEqual(slept,[5000,15000,5000,5000]);
+  assert.equal(state.calls.filter(c=>c.name==="get_standings").length,2,"optional standings get one retry, then stay unavailable");
+  assert.ok(facts.warnings.some(w=>w.code==="PROVIDER_UNAVAILABLE"&&/standings/i.test(w.message)));
+  assert.ok(facts.matchups.length>0,"a briefly throttled optional resource recovers on its retry");}finally{f.cleanup();}
+ // A throttle that outlasts the bounded retries fails the load closed (no partial league).
+ const stuck=liveClient({throttle:{get_roster:99}}),waits=[];
+ try{await assert.rejects(loadFlaimLiveFacts(stuck.client,{leagueId:LEAGUE,season:SEASON,sleep:async ms=>{waits.push(ms);}}),code("PROVIDER_UNAVAILABLE"));
+  assert.deepEqual(waits,[5000,15000,30000]);}finally{stuck.f.cleanup();}
+});
+
 test("live assembly fails closed on absent league, season mismatch, missing or contradictory core data and team mismatch",async()=>{
  const cases=[
   [{},{leagueId:"999999",season:SEASON},"LEAGUE_NOT_FOUND"],
   [{},{leagueId:LEAGUE,season:2031},"LEAGUE_NOT_FOUND"],
-  [{fail:{get_roster:"isError"}},{leagueId:LEAGUE,season:SEASON},"PROVIDER_UNAVAILABLE"],
+  [{fail:{get_roster:"isError"}},{leagueId:LEAGUE,season:SEASON,sleep:async()=>{}},"PROVIDER_UNAVAILABLE"],
   [{rosterFor:(id,r)=>id==="2"?{success:true,data:{...r.data,teamId:1}}:r},{leagueId:LEAGUE,season:SEASON},"MAPPING_INCOMPLETE"],
   [{bundle:(()=>{const b=structuredClone(BUNDLE);b.freeAgents.data.freeAgents[0].playerId=b.rosters[0].data.roster[0].playerId;b.freeAgents.data.freeAgents[0].id=String(b.rosters[0].data.roster[0].playerId);return b;})()},{leagueId:LEAGUE,season:SEASON},"MAPPING_INCOMPLETE"],
   [{},{leagueId:LEAGUE,season:SEASON,teamId:2},"PRIVATE_CONFIG_INVALID"],
@@ -277,6 +293,10 @@ test("snapshot, decision-support and duplicate route bundles share one live Flai
   const copy=await import(`../lib/providers/index.js?bundle=${Date.now()}`);
   assert.equal(copy.requestProvider(new URLSearchParams({provider:"espn"}),{privateRequest:{local:true}}),provider);
   assert.equal(requestProvider(new URLSearchParams({provider:"espn"}),{privateRequest:{local:true}}),provider);
+  // Errors thrown by the shared provider are recognized by every bundle's copy of ProviderError (not only its own).
+  const otherContracts=await import(`../lib/providers/contracts.js?bundle=${Date.now()}`),{ProviderError}=await import("../lib/providers/contracts.js");
+  assert.ok(new otherContracts.ProviderError("PROVIDER_UNAVAILABLE","espn","x") instanceof ProviderError);
+  assert.equal(new Error("x") instanceof ProviderError,false);
  });}finally{p.cleanup();}
 });
 
