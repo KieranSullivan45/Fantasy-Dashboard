@@ -28,14 +28,17 @@ Status values: `proposed` · `ready` · `in-progress` · `in-review` · `blocked
 ## Active tasks
 
 ### ESPN-LIVE-01 — Live Flaim-backed ESPN local private transport
-- Status: in-progress (draft PR opened from this branch moves it to in-review; merge not requested)
+- Status: in-review (draft PR #22; merge not requested)
 - Owner: Claude Code (project thread "ESPN-LIVE-01")
 - Reviewer: repository owner / PM, with one independent Codex review as the PM routes it
 - Branch: `claude/espn-live-01-5ghlid` (the push branch the Claude project session assigned), from `main` at `4b912e1`
 - Dependencies: ADR 0002–0006, 0012; Phase 0 feasibility proof passed 2026-10-15 on the owner's machine (14/14: Flaim metadata, dynamic public-client registration, 127.0.0.1 callback, Authorization Code + PKCE S256 without a secret, token exchange, rotating refresh, MCP initialize/tools/list, `get_user_session` exact league/season/team match, `get_league_info`, token revocation; no MCP session id; SSE responses).
 - Allowed scope: new `lib/providers/flaim/{oauth,auth-store,mcp-client,live-source}.js`, `scripts/flaim-connect.js` and the `flaim:connect` package script; `lib/providers/flaim/private-source.js` (live source, cache, refresh hook); `lib/private/config.js` (additive `facts_source.kind: "flaim_live"` + `auth_path`); `lib/providers/espn.js` (refresh hook, capability reason); `lib/providers/espn-normalize.js` (additive `coverage.fetched_at`); `lib/refresh-api.js` (guarded private refresh path); new `lib/private-league-api.js` + `app/api/private-league/route.js`; dashboard loaders and shell (`lib/snapshot-loader.js`, `lib/decision-loader.js`, `lib/trade-loader.js`, `app/dashboard/DashboardShell.js`, `app/components/AccountManager.js`); tests; ADR 0013; `ARCHITECTURE.md`, `docs/providers/espn.md`, `.env.example`; this entry and the two ledger reconciliations below. Forbidden: decision/model/trade logic, weights, thresholds, Pickup Rating, replacement policy, signals, history capture, Sleeper behavior, ESPN scoring vocabulary, any ESPN request or credential, dependencies, lockfile, CI, `vercel.json`.
 - Acceptance criteria: the 19 ESPN-LIVE-01 criteria in the owner's task message (one-time `flaim:connect`; tokens outside the repo with automatic rotating refresh; `pnpm dev:private` loads the configured league live through Flaim with no file workflow; exact session identity; all rosters; optional resources degrade with warnings; incomplete pool; authorized scoring unchanged; private/public boundaries intact; zero ESPN requests; existing file sources and Sleeper unchanged; tests green; docs; draft PR).
-- Handoff notes: see the PR description; filled in at handoff.
+- Handoff notes:
+  - Work: one-time `pnpm --silent flaim:connect` (Flaim OAuth: dynamic public client, PKCE S256, 127.0.0.1 callback) → `flaim-auth-1` outside the repo (atomic, 0600, links refused) → server-only MCP client (allow-listed read-only tools, SSE, refresh with rotation persisted first, one 401 retry) → live assembly (exact session league/season, every roster fail-closed; optional standings/matchups/available players/transactions with warnings) → `espnFactsFromFlaim(..., { access: "flaim_live" })` → unchanged provider, authorized scoring and builders. 2-minute in-memory cache; guarded private `/api/refresh` path; guarded `/api/private-league`; dashboard offers the league by `provider=espn` and shows "Live via Flaim".
+  - Tests: `pnpm test` 406/406; `pnpm build` passes; `pnpm test:ui` 37/37 (sandbox Chromium 1194 via a temporary uncommitted config override); `git diff --check` clean; CLI run end to end against an in-process Flaim double.
+  - Remaining: real-league activation on the owner's machine (`flaim:connect`, then `pnpm dev:private`); one independent Codex review.
 - Blockers: none.
 
 ### ESPN-FILE-01 — Sanitized ESPN league file as a local private facts source
