@@ -9,13 +9,14 @@ import {createHash} from "node:crypto";
 import {FLAIM_MCP_URL,FLAIM_ORIGIN,pkcePair,stateMatches,loopbackRedirect,discoverFlaim,registerClient,exchangeCode,refreshTokens,authorizationUrl,tokenFields} from "../lib/providers/flaim/oauth.js";
 import {readFlaimAuth,writeFlaimAuth} from "../lib/providers/flaim/auth-store.js";
 import {createFlaimMcpClient,parseMcpBody,FLAIM_READ_TOOLS} from "../lib/providers/flaim/mcp-client.js";
-import {loadFlaimLiveFacts,FREE_AGENT_POSITIONS} from "../lib/providers/flaim/live-source.js";
+import {loadFlaimLiveFacts,FREE_AGENT_POSITIONS,sessionPayload} from "../lib/providers/flaim/live-source.js";
 import {createPrivateEspnProvider,LIVE_TTL_MS,LIVE_MANUAL_COOLDOWN_MS} from "../lib/providers/flaim/private-source.js";
 import {validatePrivateConfig} from "../lib/private/config.js";
 import {LOOPBACK_HEADER,TOKEN_ENV} from "../lib/private/loopback.js";
-import {setPrivateEspnProviderFactory} from "../lib/providers/index.js";
+import {setPrivateEspnProviderFactory,requestProvider} from "../lib/providers/index.js";
 import {handleSnapshotRequest} from "../lib/snapshot-api.js";
 import {handleRefreshRequest} from "../lib/refresh-api.js";
+import {handleDecisionRequest} from "../lib/decision-api.js";
 import {handleChatRequest} from "../lib/chat-api.js";
 import {handlePrivateLeagueRequest} from "../lib/private-league-api.js";
 
@@ -27,14 +28,14 @@ const code=c=>e=>e.code===c;
 
 /** Synthetic Flaim: OAuth endpoints + MCP over SSE. Records every request URL; `opts` injects failures. */
 function fakeFlaim(opts={}){
- const state={urls:[],calls:[],access:new Set([opts.access??ACCESS]),refresh:new Set([REFRESH]),issued:0,methods:[],tokenBodies:[]};
+ const state={inFlight:0,maxInFlight:0,urls:[],calls:[],access:new Set([opts.access??ACCESS]),refresh:new Set([REFRESH]),issued:0,methods:[],tokenBodies:[]};
  const bundle=structuredClone(opts.bundle??BUNDLE);
  const json=(body,status=200,headers={})=>new Response(JSON.stringify(body),{status,headers:{"content-type":"application/json",...headers}});
  const sse=(id,result)=>new Response(`event: message\ndata: ${JSON.stringify({jsonrpc:"2.0",id,result})}\n\n`,{status:200,headers:{"content-type":"text/event-stream"}});
  const tool=(name,args)=>{
   if(opts.fail?.[name])return opts.fail[name]==="isError"?{isError:true,content:[{type:"text",text:"boom"}]}:null;
   const envelope=v=>({content:[{type:"text",text:JSON.stringify(v)}]});
-  if(name==="get_user_session")return envelope(bundle.session);
+  if(name==="get_user_session")return envelope(opts.flatSession?{success:true,...bundle.session.data}:bundle.session);
   if(name==="get_league_info")return envelope(bundle.leagueInfo);
   if(name==="get_roster"){const r=bundle.rosters.find(r=>String(r.data.teamId)===args.team_id);return envelope(opts.rosterFor?opts.rosterFor(args.team_id,r):r);}
   if(name==="get_standings")return envelope(bundle.standings);
@@ -65,7 +66,8 @@ function fakeFlaim(opts={}){
    const m=JSON.parse(init.body);state.methods.push(m.method);
    if(!("id" in m))return new Response(null,{status:202});
    if(m.method==="initialize")return sse(m.id,{protocolVersion:"2025-06-18",capabilities:{tools:{}},serverInfo:{name:"flaim-double"}});
-   if(m.method==="tools/call"){state.calls.push(m.params);if(opts.rpcError?.[m.params.name])return new Response(JSON.stringify({jsonrpc:"2.0",id:m.id,error:{code:-32000,message:`secret ${bearer}`}}),{headers:{"content-type":"application/json"}});const r=tool(m.params.name,m.params.arguments);if(!r)throw new Error("network down");return sse(m.id,r);}
+   if(m.method==="tools/call"){state.calls.push(m.params);
+    if(opts.trackConcurrency){state.maxInFlight=Math.max(state.maxInFlight,++state.inFlight);await new Promise(r=>setTimeout(r,2));state.inFlight--;}if(opts.rpcError?.[m.params.name])return new Response(JSON.stringify({jsonrpc:"2.0",id:m.id,error:{code:-32000,message:`secret ${bearer}`}}),{headers:{"content-type":"application/json"}});const r=tool(m.params.name,m.params.arguments);if(!r)throw new Error("network down");return sse(m.id,r);}
    return sse(m.id,{});
   }
   return json({},404);
@@ -188,6 +190,16 @@ test("live assembly: exact league/season, authenticated team, every roster, opti
   assert.equal(facts.warnings.filter(w=>w.code==="PROVIDER_UNAVAILABLE").length,3);}finally{opt.f.cleanup();}
 });
 
+test("live Flaim's flat get_user_session answer is accepted; Flaim tool calls are issued one at a time",async()=>{
+ assert.deepEqual(sessionPayload({success:true,allLeagues:[]}),{allLeagues:[]});
+ assert.deepEqual(sessionPayload({success:true,data:{allLeagues:[]}}),{allLeagues:[]});
+ assert.throws(()=>sessionPayload({success:false,allLeagues:[]}),code("INVALID_IMPORT"));
+ const {client,state,f}=liveClient({flatSession:true,trackConcurrency:true});
+ try{const {facts}=await loadFlaimLiveFacts(client,{leagueId:LEAGUE,season:SEASON,teamId:1});
+  assert.equal(facts.user_team_id,1);assert.equal(facts.teams.length,2);
+  assert.equal(state.maxInFlight,1,"Flaim throttles bursts, so a league load never has two tool calls in flight");}finally{f.cleanup();}
+});
+
 test("live assembly fails closed on absent league, season mismatch, missing or contradictory core data and team mismatch",async()=>{
  const cases=[
   [{},{leagueId:"999999",season:SEASON},"LEAGUE_NOT_FOUND"],
@@ -251,6 +263,20 @@ test("private live snapshot: Flaim facts + authorized scoring, exact team, priva
   t+=LIVE_TTL_MS+1;await handleSnapshotRequest(local(`/api/snapshot?provider=espn&league=${LEAGUE}`));assert.ok(p.state.calls.length>calls,"after the TTL Flaim is asked again");
   // Every request went to Flaim's MCP endpoint (zero ESPN or other hosts).
   assert.ok(p.state.urls.length>0);for(const url of p.state.urls)assert.equal(url,FLAIM_MCP_URL);
+ });}finally{p.cleanup();}
+});
+
+test("snapshot, decision-support and duplicate route bundles share one live Flaim load within the TTL",async()=>{
+ let t=Date.parse("2030-09-26T12:00:00Z");const p=livePrivate({clock:()=>t});
+ try{await withPrivate(p,async provider=>{
+  const loads=()=>p.state.calls.filter(c=>c.name==="get_league_info").length;
+  assert.equal((await handleSnapshotRequest(local(`/api/snapshot?provider=espn&league=${LEAGUE}`))).status,200);assert.equal(loads(),1);
+  const res=await handleDecisionRequest(local(`/api/decision-support?provider=espn&league=${LEAGUE}`));
+  assert.equal(res.headers.get("cache-control"),"private, no-store");assert.equal(loads(),1,"decision-support reuses the snapshot's live facts");
+  // Next bundles routes separately: a second copy of the provider registry must hand out the same private provider.
+  const copy=await import(`../lib/providers/index.js?bundle=${Date.now()}`);
+  assert.equal(copy.requestProvider(new URLSearchParams({provider:"espn"}),{privateRequest:{local:true}}),provider);
+  assert.equal(requestProvider(new URLSearchParams({provider:"espn"}),{privateRequest:{local:true}}),provider);
  });}finally{p.cleanup();}
 });
 
