@@ -27,6 +27,19 @@ Status values: `proposed` · `ready` · `in-progress` · `in-review` · `blocked
 
 ## Active tasks
 
+### EDGE-RANK-01 — Ranking-oriented forecast / lineup-edge research
+- Status: in-review (research branch pushed; no PR or merge requested)
+- Owner: Claude Code (project thread "EDGE-RANK-01", requested by the owner on 2026-10-19)
+- Reviewer: repository owner / ChatGPT PM
+- Branch: `research/edge-rank-01-gx3j37`, from `main` at `cfaa336`
+- Dependencies: EDGE-01 harness (`lib/research/edge01/*`, reused read-only), Evaluation Protocol v1, ADR 0009/0010/0011. No overlap with EDGE-02 (`research/edge-02-vip-prospective-shadow`).
+- Allowed scope: new research-only `lib/research/edgerank01/*`, `scripts/research/edge-rank-01.js`, `test/edgerank01-research.test.js`, `docs/research/edge-rank-01-analysis-plan.md`, `docs/research/edge-rank-01.md`, `artifacts/research/edge-rank-01-results.json`, and this entry. Forbidden: production model/weights/calibration/schemas/signals/providers/capture/UI; 2026 outcomes; protocol registration; betting-derived candidate inputs.
+- Handoff notes:
+  - Work: class X walk-forward (2019–2025) of 38 prediction series (A simple, B ridge perturbations, C ranking-objective selection, 6 disclosed post-hoc P candidates, level/spread recalibration controls) with ranking metrics and legal-lineup simulations in 5 synthetic structures × 3 seeds via the repo optimizer. EDGE-01 ridge lineup gain replicates (+0.59/roster-week, CI 0.35–0.83; 7/7 folds; all structures/seeds; LOFO; without RB +0.38); it is within-position ordering (RB/WR/TE, not QB), concentrated in weeks 3–9, not forecast compression; RB MAE penalty is a mean-vs-median artifact. Simple P5 `[EW16, R3, snap_last2]` OLS keeps the full gain (+0.60). Ranking-objective selection is not more stable than MAE selection; VIP adds nothing to lineups. Recommendation: worth prospective registration (primary P5, secondary B1 ridge7 λ=100). Report: `docs/research/edge-rank-01.md`.
+  - Tests: `pnpm test` 438/438 (6 new); `pnpm build` passes; two full research runs byte-identical apart from `generated_at`; truncation canary 1,420/1,420. No UI/route/loader change, so `pnpm test:ui` not run. No production file differs from `main`.
+  - Remaining (each needs owner/PM approval): decide whether to register a prospective ranking/lineup shadow (contract sketch in the report §11).
+- Blockers: none.
+
 ### EDGE-01 — Forecast & opportunity edge research slice
 - Status: in-review (draft PR; merge not requested)
 - Owner: Claude Code (project thread, autonomous batch requested by the owner on 2026-10-15)
