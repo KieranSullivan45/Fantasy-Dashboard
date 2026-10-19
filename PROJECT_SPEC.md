@@ -32,6 +32,7 @@ A transparent, evidence-first assistant for fantasy football managers: one place
 - Decision engine `decision-0.3.2`: backtested Start Value and acquisition blends, replacement/VOR, Hungarian legal-lineup optimizer, conservative add/drop protections, Pickup Rating.
 - Signal Engine `signals-1` with conservative role/usage/schedule/attention flags (informational).
 - Prospective history: immutable captures on the `data-archive` branch every six hours.
+- Research shadows (never user-facing): the H9 prior candidate (ADR 0011) and the frozen EDGE-02 VIP Start Value candidates A2/X2 with as-of roster/lineup evidence (ADR 0014, Evaluation Protocol v2), captured next to production for later prospective evaluation.
 - Trade engine (v0.4): pure evaluator over both rosters before/after the package, Hungarian lineups, forced drops with existing protections, no Market Value and no verdict; dashboard Trade Analyzer.
 - Provider boundary with a provider-neutral domain projection; ESPN offline normalizer and disabled live adapter.
 - ESPN groundwork: Flaim → `espn-facts-1` mapping, user-authorized scoring, verified NFL season state and a local-only private mode (ADR 0002–0005).
@@ -46,6 +47,7 @@ A transparent, evidence-first assistant for fantasy football managers: one place
 - Add/drop policy weights and signal thresholds are transparent heuristics, not prospectively calibrated.
 - No commissioner lock/deadline handling or multi-move transactions; no private-user authentication.
 - History covers configured installation leagues only.
+- EDGE-02 shadow candidates run only for leagues whose offensive scoring exactly matches PPR, half-PPR, standard or the registered TE premium; other leagues get withheld records. They are not evaluated before the end of the 2026 regular season and do not change production.
 
 ## Roadmap
 

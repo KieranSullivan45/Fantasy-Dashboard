@@ -27,8 +27,23 @@ Status values: `proposed` · `ready` · `in-progress` · `in-review` · `blocked
 
 ## Active tasks
 
-### EDGE-01 — Forecast & opportunity edge research slice
+### EDGE-02-CAPTURE-01 — Register and capture the prospective VIP candidate shadow
 - Status: in-review (draft PR; merge not requested)
+- Owner: Claude Code (project thread, task contract from the owner on 2026-10-19, strategically approved by the ChatGPT PM as capture-only)
+- Reviewer: repository owner / ChatGPT PM, with independent review as the owner routes it
+- Branch: `research/edge-02-vip-prospective-shadow-0dktf1` (the push branch the Claude project session assigned), from `main` at `cfaa336` (PR #23 merge)
+- Dependencies: EDGE-01 (PR #23), Evaluation Protocol v1 (ADR 0007), ADR 0009, ADR 0011 (H9 shadow).
+- Allowed scope: new `docs/evaluation-protocol-v2.md`, ADR 0014, `lib/shadow/edge02/*` (new), `scripts/research/edge-02-freeze-vip.js` (new), `artifacts/research/edge-02-vip-coefficients.json` (new), `test/edge02-shadow.test.js` (new), additive fields in the existing `shadowObserver` payload of `lib/decision/build-context.js`, `scripts/capture-history.js`, `ARCHITECTURE.md`, `PROJECT_SPEC.md` (capture capability/limitation wording), this entry and the stale EDGE-01 / ESPN-LIVE-01 ledger reconciliation. Forbidden: production model, weights, calibration, `MODEL_VERSION`/`FEATURE_VERSION`, forecast behaviour, H9 semantics or files, Pickup Rating, add/drop/replacement/trade, signals, provider writes, ESPN/Flaim transport, public routes/UI, dependencies/lockfile, workflow YAML, outcome-driven selection, custom-scoring refits, Market Value, Protocol v1 and any 2026 outcome.
+- Acceptance criteria: the twelve milestones of the owner's task contract (Protocol v2 registered without editing v1; full-precision 2014–2017 VIP coefficients reproduced from hash-matched inputs with a reproduction test; exact format classification; EDGE-01 VIP_last2 semantics; whole-candidate fallback/withhold; additive `candidate-shadow-1` and `candidate-lineup-1` sidecars; prospective timing and trusted-writer evidence; private-data exclusion in depth; roster/lineup evidence; isolated capture integration; adversarial tests; docs).
+- Handoff notes:
+  - Work: Protocol v2 (`docs/evaluation-protocol-v2.md`, inherits v1 unedited) and ADR 0014 submitted for registration; the effective boundary is this PR's merge commit time on `main`, recorded in code as `pending_registration_record`. VIP coefficients reproduced at full precision by the unchanged EDGE-01 fitter on 2014–2017 only, all nine inputs SHA-256-matched to the EDGE-01 provenance (`ids.csv` bytes recovered from dynastyprocess/data `2bbc02b`); every value rounds to the published fit; artifact `artifacts/research/edge-02-vip-coefficients.json` regenerates byte-identically. Frozen config digest `EDGE02_CONFIG_SHA256` = `de8783b1e11cc97c715ea0d988d155e81bf4c3863b142c12edb9245a4911b945`. New `lib/shadow/edge02/*` (exact format classification, input audit, VIP_last2, A2/X2 with whole-candidate fallback/withhold, `candidate-shadow-1` and `candidate-lineup-1` sidecars, privacy guards in builder, writer and entry point, timing and trusted-writer evidence); capture runs in `scripts/capture-history.js` after production and H9, never throws. `build-context.js` only passes three more existing values to the optional `shadowObserver`.
+  - Tests: `node --test test/edge02-shadow.test.js` 31/31 (the coefficient reproduction test ran against the hash-matched local inputs, not skipped); `test/h9-shadow.test.js` 25/25; `test/edge01-research.test.js` 16/16; `pnpm test` 463/463; `pnpm build` passes; `pnpm test:ui` 37/37 (sandbox Chromium 1194 aliased through a temporary `PLAYWRIGHT_BROWSERS_PATH`, nothing committed); `git diff --check` clean. No production model, version, H9, signal, route, UI, workflow or lockfile file differs from `main`. No live capture was run (the sandbox cannot reach Sleeper); no 2026 outcome was read.
+  - Remaining: after merge, record the merge commit SHA, merge time and Protocol v2 file SHA-256 here (Protocol v2 §9). Outcome scorer and lineup evaluator are later tasks; no EDGE-02 outcome look before the end of the 2026 regular season.
+  - Open question for the PM: exact classification withholds every league whose scoring has any non-zero unregistered offensive rule (for example `fum_rec_td` or `st_td`, which many Sleeper defaults include), so coverage depends on the configured leagues' scoring.
+- Blockers: none.
+
+### EDGE-01 — Forecast & opportunity edge research slice
+- Status: done (PR #23 merged 2026-10-19, merge commit `cfaa3362bdf9acf05b4c079b246897a05d3aaecc`, head `75610bf`)
 - Owner: Claude Code (project thread, autonomous batch requested by the owner on 2026-10-15)
 - Reviewer: repository owner / ChatGPT PM, with independent review as the owner routes it
 - Branch: `research/edge-01-forecast-opportunity`, from `main` at `4b912e1`; current `main` (`e1abffa`, ESPN-LIVE-01 / PR #22) merged in on 2026-10-19 (merge commit, no rebase or force-push)
@@ -40,11 +55,11 @@ Status values: `proposed` · `ready` · `in-progress` · `in-review` · `blocked
   - Tests: `pnpm test` 408/408 pass (16 new in `test/edge01-research.test.js`: sealed-season refusal, truncation invariance, missingness, identity joins, walk-forward isolation, format/xFP consistency, determinism, production isolation); `pnpm build` passes; `git diff --check` clean; full research run end-to-end (20 permutations) and two repeat runs byte-identical apart from `generated_at`. No production file differs from `main`. No UI, route or loader change, so `pnpm test:ui` was not run.
   - Integration (2026-10-19): only conflict was this ledger section (both entries kept). Main touched no EDGE-01 input (`lib/backtest`, `lib/decision`, `lib/signals`, `lib/normalize`, `lib/sources`, lockfile), so no compatibility change was needed. Research code, tests, docs and artifact are byte-identical to `1534413`; a fresh 20-permutation run reproduces the committed artifact exactly (excluding `generated_at`). `node --test test/edge01-research.test.js` 16/16; `pnpm test` 432/432; `pnpm build` passes; `git diff --check` clean. Results and conclusions unchanged.
   - Correction during the run: non-PPR formats first reused PPR xFP; fixed (xFP re-scored per format) before the reported results, with a regression test.
-  - Remaining (each needs approval): EDGE-02 VIP Start Value prospective shadow (contract in `docs/research/edge-01.md`); ranking-targeted model research; outcome scorer for shadow records.
+  - Remaining (each needs approval): ranking-targeted model research; outcome scorer for shadow records. The EDGE-02 shadow follow-up is EDGE-02-CAPTURE-01.
 - Blockers: none.
 
 ### ESPN-LIVE-01 — Live Flaim-backed ESPN local private transport
-- Status: in-review (draft PR #22; merge not requested)
+- Status: done (PR #22 merged 2026-10-19, merge commit `e1abffaa02e15369bc7af10d04d7be7480aa1cfd`, final head `eb1dc54`)
 - Owner: Claude Code (project thread "ESPN-LIVE-01")
 - Reviewer: repository owner / PM, with one independent Codex review as the PM routes it
 - Branch: `claude/espn-live-01-5ghlid` (the push branch the Claude project session assigned), from `main` at `4b912e1`
@@ -58,7 +73,7 @@ Status values: `proposed` · `ready` · `in-progress` · `in-review` · `blocked
   - Codex review (head e723b17) found four blockers, fixed in one pass: (1) live facts carry `coverage.input_revision` (`espn-live:` hash of config revision, auth file, authorization generation, facts digest), used by the decision basis, decision cache and refresh response; (2) additive non-secret `authorization_generation` in `flaim-auth-1` (new per `flaim:connect`, kept across rotation, missing = `legacy`) keys the live cache, so a reconnect never reuses another authorization's facts; (3) token refresh serialized per canonical auth-file path across all clients in the process; (4) optional resources validated with the existing schema checks inside their own boundary (malformed → absent + warning; contradictions still fail closed). Each regression test fails on e723b17 and passes now.
   - Fix-pass tests: `pnpm test` 414/414; `pnpm build` passes; `pnpm test:ui` 37/37 (same temporary browser override); `git diff --check` clean.
   - Codex re-verification of f8326a2 confirmed the four fixes and found two defects, fixed in `mcp-client.js`: (P1) a grant that returns after a reconnect re-reads the stored authorization and, if its client id or generation changed, discards its tokens and fails the load instead of overwriting the newer authorization; (P2) the refresh lock keys on the auth file's OS-native real path, so Windows filename-case aliases share one lock. Both regression tests fail with their fix removed. `pnpm test` 416/416; `pnpm build` passes; `git diff --check` clean; UI suite not rerun (server-side auth/refresh change only).
-  - Remaining: focused Codex verification of the two defects. No re-run of OAuth is needed (existing auth files read as generation `legacy`).
+  - Merged (reconciled in EDGE-02-CAPTURE-01): the owner reports the real-machine smoke test passed after merge and local live ESPN is operationally validated. Remaining items are presentation cleanup, not transport blockers. No re-run of OAuth is needed (existing auth files read as generation `legacy`).
 - Blockers: none.
 
 ### ESPN-FILE-01 — Sanitized ESPN league file as a local private facts source

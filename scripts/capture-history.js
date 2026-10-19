@@ -5,6 +5,7 @@ import { getConfiguredLeagueIds, getConfiguredUsername } from "../lib/config.js"
 import { appendCapture } from "../lib/history/git-store.js";
 import { loadStats } from "../lib/sources/stats/nflverse.js";
 import { buildH9ShadowCapture, appendH9ShadowCapture } from "../lib/shadow/h9.js";
+import { captureEdge02Shadow } from "../lib/shadow/edge02/run.js";
 const directory = process.argv[2] || ".data/archive-data";
 await mkdir(directory, { recursive: true });
 for (const league of getConfiguredLeagueIds()) {
@@ -18,8 +19,15 @@ for (const league of getConfiguredLeagueIds()) {
   const capture = await appendCapture(directory, decision);
   console.log(JSON.stringify(capture));
   // H9 shadow (ADR 0009): research-only, written after the production capture; its failure never fails this run.
-  try { console.log(JSON.stringify({ h9_shadow: await appendH9ShadowCapture(directory, await buildH9ShadowCapture({ decision, internals: shadowInputs, statsSource: loadStats, classification: "prospective", linkedCaptureId: capture.capture_id })) })); }
-  catch (error) { console.log(JSON.stringify({ h9_shadow: { status: "failed", error: error.message } })); }
+  const h9 = { capture: null, persisted: false, path: null, error: null };
+  try {
+    h9.capture = await buildH9ShadowCapture({ decision, internals: shadowInputs, statsSource: loadStats, classification: "prospective", linkedCaptureId: capture.capture_id });
+    const written = await appendH9ShadowCapture(directory, h9.capture);
+    Object.assign(h9, { persisted: !!written?.path, path: written?.path ?? null });
+    console.log(JSON.stringify({ h9_shadow: written }));
+  } catch (error) { h9.error = error.message; console.log(JSON.stringify({ h9_shadow: { status: "failed", error: error.message } })); }
+  // EDGE-02 candidate shadow (ADR 0014): approved public Sleeper contexts only; never throws, never fails this run.
+  console.log(JSON.stringify({ edge02_shadow: await captureEdge02Shadow({ directory, decision, internals: shadowInputs, h9, linkedCaptureId: capture.capture_id, approvedLeagueIds: getConfiguredLeagueIds() }) }));
   const marketPath = join(directory, "market", `${decision.league.season}.json`); let market = { schema_version: "market-history-1", observations: [] };
   try { market = JSON.parse(await readFile(marketPath, "utf8")); } catch (e) { if (e.code !== "ENOENT") throw e; }
   const current = Object.values(decision.player_context).map(c => c.market_attention).filter(m => m?.raw_count != null);
