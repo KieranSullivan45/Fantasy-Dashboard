@@ -4,21 +4,34 @@ const STORAGE = "fantasy-accounts-v1";
 export default function AccountManager({ onChange, selection, rosters = [], leagueName, management = false }) {
   const [accounts, setAccounts] = useState([]), [user, setUser] = useState(""), [season, setSeason] = useState(""), [username, setUsername] = useState(""), [leagueInput, setLeagueInput] = useState("");
   const [leagues, setLeagues] = useState([]), [error, setError] = useState(""), [busy, setBusy] = useState(false);
+  // Local private mode only (ADR 0013): the configured ESPN league, offered first. Never written to localStorage.
+  const [privateLeague, setPrivateLeague] = useState(null);
   const generation = useRef(0), current = useRef({ accounts: [], selection: null });
   const publish = (list, picked, accountList = accounts) => {
     const savedAccounts = accountList.map(a => a.provider_user_id === picked.userId ? { ...a, preferences: { ...a.preferences, [picked.season]: { leagueId: picked.leagueId, leagues: list } } } : a);
     setAccounts(savedAccounts); setLeagues(list); current.current = { accounts: savedAccounts, selection: { ...picked, leagues: list } };
     onChange({ ...picked, leagues: list });
+    if (picked.provider === "espn") return;
     try { localStorage.setItem(STORAGE, JSON.stringify(current.current)); } catch { /* Read-only/private browser still works. */ }
   };
   useEffect(() => {
     let alive = true; const boot = ++generation.current;
     (async () => {
       try {
+        // available: false everywhere except a guarded local private-mode server; failures just mean no private league.
+        const local = await fetch("/api/private-league", { cache: "no-store" }).then(r => r.ok ? r.json() : null).catch(() => null);
+        if (!alive) return;
+        if (local?.schema_version === "private-league-1" && local.available === true && local.provider === "espn") {
+          const entry = { league_id: String(local.league_id), season: local.season, source: local.source };
+          setPrivateLeague(entry); setSeason(String(entry.season));
+          onChange({ provider: "espn", leagueId: entry.league_id, userId: null, season: entry.season, rosterId: null, leagues: [] });
+        }
         let saved = null;
         try { saved = JSON.parse(localStorage.getItem(STORAGE) || "null"); } catch { /* Damaged/private browser preferences must not prevent onboarding. */ }
         if (saved?.selection?.leagueId && Array.isArray(saved.accounts) && Array.isArray(saved.selection.leagues)) {
-          if (!alive) return; setAccounts(saved.accounts); setUser(saved.selection.userId || ""); setSeason(String(saved.selection.season || "")); publish(saved.selection.leagues, saved.selection, saved.accounts); return;
+          if (!alive) return; setAccounts(saved.accounts); setUser(saved.selection.userId || ""); setLeagues(saved.selection.leagues);
+          if (local?.available !== true) { setSeason(String(saved.selection.season || "")); publish(saved.selection.leagues, saved.selection, saved.accounts); }
+          return;
         }
         const response = await fetch("/api/accounts"), result = await response.json();
         if (!response.ok) throw new Error(result.error);
@@ -26,8 +39,8 @@ export default function AccountManager({ onChange, selection, rosters = [], leag
         const account = result.defaults?.user ? { provider_user_id: result.defaults.user, username: "Installation account" } : null;
         const list = (result.defaults?.leagues || []).map(id => ({ league_id: id, name: id, season: result.season }));
         const accountList = account ? [account] : [];
-        setAccounts(accountList); setUser(account?.provider_user_id || ""); setSeason(String(result.season));
-        publish(list, { userId: account?.provider_user_id || null, season: result.season, leagueId: list[0]?.league_id || "" }, accountList);
+        setAccounts(accountList); setUser(account?.provider_user_id || ""); setLeagues(list);
+        if (local?.available !== true) { setSeason(String(result.season)); publish(list, { userId: account?.provider_user_id || null, season: result.season, leagueId: list[0]?.league_id || "" }, accountList); }
       } catch (e) { if (alive) setError(e.message); }
     })();
     return () => { alive = false; ++generation.current; };
@@ -59,10 +72,15 @@ export default function AccountManager({ onChange, selection, rosters = [], leag
       </div>
     </details>
     <div className="accountFields accountToolbar">
-      <label className="leagueControl">League <select aria-label="League" disabled={busy || !leagues.length} value={selection.leagueId || ""} onChange={e => publish(leagues, { userId: user || null, season: leagues.find(l => l.league_id === e.target.value)?.season || selection.season, leagueId: e.target.value, rosterId: null })}>{!leagues.length ? <option value="">Select a league</option> : leagues.map(l => <option key={l.league_id} value={l.league_id}>{l.league_id === selection.leagueId && leagueName ? leagueName : l.name}</option>)}</select></label>
+      <label className="leagueControl">League <select aria-label="League" disabled={busy || !(leagues.length || privateLeague)} value={selection.provider === "espn" ? `espn:${selection.leagueId}` : selection.leagueId || ""} onChange={e => {
+        if (privateLeague && e.target.value === `espn:${privateLeague.league_id}`) return onChange({ provider: "espn", leagueId: privateLeague.league_id, userId: null, season: privateLeague.season, rosterId: null, leagues });
+        publish(leagues, { userId: user || null, season: leagues.find(l => l.league_id === e.target.value)?.season || selection.season, leagueId: e.target.value, rosterId: null });
+      }}>{!leagues.length && !privateLeague ? <option value="">Select a league</option> : null}
+        {privateLeague ? <option value={`espn:${privateLeague.league_id}`}>{selection.provider === "espn" && leagueName ? leagueName : "My ESPN league"} · ESPN{privateLeague.source === "live_flaim" ? " (live via Flaim)" : " (saved)"}</option> : null}
+        {leagues.map(l => <option key={l.league_id} value={l.league_id}>{l.league_id === selection.leagueId && selection.provider !== "espn" && leagueName ? leagueName : l.name}</option>)}</select></label>
       <form className="seasonControl" onSubmit={e => { e.preventDefault(); if (user) discover({ user, season }); else setError("Choose an account to discover that season's leagues, or add its league ID directly."); }}><label>Season <input aria-label="NFL season" type="number" min="2010" value={season} onChange={e => setSeason(e.target.value)} required /></label><button aria-label="Discover season" disabled={busy}>Go</button></form>
-      {!selection.userId && rosters.length ? <label>Analyze roster <select aria-label="Analyze roster" value={selection.rosterId || ""} onChange={e => publish(leagues, { ...selection, rosterId: e.target.value ? Number(e.target.value) : null })}><option value="">Spectator — no “my roster”</option>{rosters.map(r => <option key={r.roster_id} value={r.roster_id}>{r.team_name}</option>)}</select></label> : null}
-      <span className="muted accountContext">{busy ? "Discovering…" : `${accounts.find(a => a.provider_user_id === selection.userId)?.username || (selection.userId ? "Connected account" : "Spectator")} · ${leagues.length} leagues`}</span>
+      {!selection.userId && rosters.length ? <label>Analyze roster <select aria-label="Analyze roster" value={selection.rosterId || ""} onChange={e => { const picked = { ...selection, rosterId: e.target.value ? Number(e.target.value) : null }; if (selection.provider === "espn") onChange(picked); else publish(leagues, picked); }}><option value="">{selection.provider === "espn" ? "My team (from the Flaim session)" : "Spectator — no “my roster”"}</option>{rosters.map(r => <option key={r.roster_id} value={r.roster_id}>{r.team_name}</option>)}</select></label> : null}
+      <span className="muted accountContext">{busy ? "Discovering…" : selection.provider === "espn" ? `ESPN · ${privateLeague?.source === "live_flaim" ? "live via Flaim, read-only" : "saved private data"}` : `${accounts.find(a => a.provider_user_id === selection.userId)?.username || (selection.userId ? "Connected account" : "Spectator")} · ${leagues.length} leagues`}</span>
     </div>
     </details>
     {error ? <p className="status error" role="alert">{error}</p> : null}
