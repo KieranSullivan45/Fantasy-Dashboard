@@ -12,7 +12,7 @@ New ESPN player keys are nfl:GSIS when an exact unambiguous crosswalk exists, ot
 
 ## Capability matrix
 
-| Feature | Sleeper live | ESPN live | ESPN authorized import | ESPN facts via Flaim (offline mapping only) || ESPN saved league file (local private, ADR 0012) |
+| Feature | Sleeper live | ESPN live | ESPN authorized import | ESPN facts via Flaim (live in local private mode, ADR 0013; otherwise offline mapping) || ESPN saved league file (local private, ADR 0012) |
 |---|---|---|---|---|---|
 | Username/discovery | Yes | Disabled | No | Session team for the exact league/season | No; roster only by explicit `roster=` (config `team_id` validated only) |
 | League/settings/rosters | Yes | Disabled | Parsed when present | Rosters and slot counts; no owners, playoff size, waiver type or FAAB budget | All teams' rosters, slot counts, matchup periods; no owners, playoff size, waiver type or FAAB budget |
@@ -26,7 +26,7 @@ New ESPN player keys are nfl:GSIS when an exact unambiguous crosswalk exists, ot
 | Draft picks | Transaction history | Disabled | Unsupported | Completed selections; no ownership ledger | Not accepted in v1 |
 | Complete waiver pool | Yes | Disabled | Unsupported | No (capped subset; free agent/waiver state and clear time). Replacement levels, VOR, add/drop, Pickup Rating and trades stay disabled even with scoring | No (optional observed subset with league free-agent/waiver status; never complete). Same gates as Flaim |
 | Add interest | Yes | Disabled | Unsupported | No | No |
-| Private auth | Not collected | Disabled | Not accepted | Local private mode only: saved bundle, no transport/OAuth (ADR 0005) | Local private mode only: sanitized file installed by `pnpm --silent espn:import`; credential-like content rejected; no ESPN request |
+| Private auth | Not collected | Disabled | Not accepted | Local private mode only: live Flaim OAuth (public client, PKCE S256, loopback callback; tokens in a private file outside the repo, ADR 0013) or a saved bundle (ADR 0005); never ESPN credentials | Local private mode only: sanitized file installed by `pnpm --silent espn:import`; credential-like content rejected; no ESPN request |
 
 Capability availability describes adapter support, not a guarantee that every field exists in every league. Missing fields remain null. ESPN public API requests fail closed; model-meta still describes capabilities.
 
@@ -45,4 +45,4 @@ Observation records use their existing provider field. Sleeper archive paths sta
 5. Prove fixture parity, legal lineup/scoring behavior, namespace isolation, safe errors and live access before enabling routes/onboarding.
 6. Implement approved authentication separately; never put private league data into shared public caches or machine routes.
 
-Facts from any ESPN source map into the internal `espn-facts-1` contract and one snapshot builder (ADR 0002); Flaim and the saved league file (ADR 0012) are transport/provenance, never provider ids. Future live ESPN activation still needs a complete transport/onboarding/security implementation; changing a capability flag alone is insufficient.
+Facts from any ESPN source map into the internal `espn-facts-1` contract and one snapshot builder (ADR 0002); Flaim and the saved league file (ADR 0012) are transport/provenance, never provider ids. Live Flaim-backed ESPN is local private mode only (ADR 0013); public/hosted ESPN activation still needs its own approved transport/onboarding/security design, and changing a capability flag alone is insufficient.
