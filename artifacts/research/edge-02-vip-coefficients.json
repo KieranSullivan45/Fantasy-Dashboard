@@ -1,0 +1,454 @@
+{
+  "schema": "edge02-vip-freeze-1",
+  "task": "EDGE-02-CAPTURE-01",
+  "evidence_class": "R (deterministic reproduction; no selection)",
+  "training_seasons": [
+    2014,
+    2015,
+    2016,
+    2017
+  ],
+  "formats": [
+    "ppr",
+    "half",
+    "standard",
+    "te_premium"
+  ],
+  "procedure": "lib/research/edge01/cases.js fitVipModel (OLS, ridge lambda 0) on buildSeasonGames rows, per research format and position",
+  "coefficients": {
+    "ppr": {
+      "QB": {
+        "inputs": [
+          "passing_attempts",
+          "carries"
+        ],
+        "coef": [
+          0.43474192108413057,
+          0.3906627140158081,
+          0.9163111676953346
+        ],
+        "n": 2388
+      },
+      "RB": {
+        "inputs": [
+          "carries",
+          "targets"
+        ],
+        "coef": [
+          -0.16145132509960014,
+          0.6056640905572497,
+          1.4536272854163805
+        ],
+        "n": 6586
+      },
+      "WR": {
+        "inputs": [
+          "targets",
+          "air_yards",
+          "carries"
+        ],
+        "coef": [
+          -0.07904892152072218,
+          1.5114834642974326,
+          0.012693622360780754,
+          0.7681895173928979
+        ],
+        "n": 8942
+      },
+      "TE": {
+        "inputs": [
+          "targets",
+          "air_yards"
+        ],
+        "coef": [
+          0.06737367087327417,
+          1.4610635501576295,
+          0.02852177464761277
+        ],
+        "n": 4505
+      }
+    },
+    "half": {
+      "QB": {
+        "inputs": [
+          "passing_attempts",
+          "carries"
+        ],
+        "coef": [
+          0.4321411540950191,
+          0.3906121259399334,
+          0.9159765342533936
+        ],
+        "n": 2388
+      },
+      "RB": {
+        "inputs": [
+          "carries",
+          "targets"
+        ],
+        "coef": [
+          -0.15059143637595618,
+          0.6055452211837368,
+          1.079270173977635
+        ],
+        "n": 6586
+      },
+      "WR": {
+        "inputs": [
+          "targets",
+          "air_yards",
+          "carries"
+        ],
+        "coef": [
+          -0.06270791473040216,
+          1.1261455312661535,
+          0.020273705868615897,
+          0.7579610108877093
+        ],
+        "n": 8942
+      },
+      "TE": {
+        "inputs": [
+          "targets",
+          "air_yards"
+        ],
+        "coef": [
+          0.09032180603070383,
+          1.0681293275869639,
+          0.03631401073454123
+        ],
+        "n": 4505
+      }
+    },
+    "standard": {
+      "QB": {
+        "inputs": [
+          "passing_attempts",
+          "carries"
+        ],
+        "coef": [
+          0.42954038710588627,
+          0.39056153786406,
+          0.9156419008114458
+        ],
+        "n": 2388
+      },
+      "RB": {
+        "inputs": [
+          "carries",
+          "targets"
+        ],
+        "coef": [
+          -0.1397315476521639,
+          0.6054263518101995,
+          0.704913062538901
+        ],
+        "n": 6586
+      },
+      "WR": {
+        "inputs": [
+          "targets",
+          "air_yards",
+          "carries"
+        ],
+        "coef": [
+          -0.04636690794025977,
+          0.7408075982346928,
+          0.027853789376470012,
+          0.7477325043826424
+        ],
+        "n": 8942
+      },
+      "TE": {
+        "inputs": [
+          "targets",
+          "air_yards"
+        ],
+        "coef": [
+          0.11326994118805356,
+          0.6751951050163394,
+          0.04410624682146768
+        ],
+        "n": 4505
+      }
+    },
+    "te_premium": {
+      "QB": {
+        "inputs": [
+          "passing_attempts",
+          "carries"
+        ],
+        "coef": [
+          0.34743805888654045,
+          0.3672796112582059,
+          0.9418051607896064
+        ],
+        "n": 2388
+      },
+      "RB": {
+        "inputs": [
+          "carries",
+          "targets"
+        ],
+        "coef": [
+          -0.1616460898472427,
+          0.6056830199122523,
+          1.4535853508433765
+        ],
+        "n": 6586
+      },
+      "WR": {
+        "inputs": [
+          "targets",
+          "air_yards",
+          "carries"
+        ],
+        "coef": [
+          -0.07948023813774086,
+          1.5113923590297391,
+          0.012703182001302596,
+          0.7683456593113078
+        ],
+        "n": 8942
+      },
+      "TE": {
+        "inputs": [
+          "targets",
+          "air_yards"
+        ],
+        "coef": [
+          0.04506361220829458,
+          1.8539757600178657,
+          0.02069910233301731
+        ],
+        "n": 4505
+      }
+    }
+  },
+  "source_manifest": [
+    {
+      "file": "ids.csv",
+      "sha256": "9bc031b09ccb2fc72e173856dcc80fc7e5e19f3e0fedef47850ee8aee2585b2d",
+      "bytes": 2639486,
+      "edge01_sha256": "9bc031b09ccb2fc72e173856dcc80fc7e5e19f3e0fedef47850ee8aee2585b2d",
+      "matches_edge01": true
+    },
+    {
+      "file": "stats-2014.csv",
+      "sha256": "a389b10d94eb8e6b9a153223d381aab821b0eff4cd73967835a21032192abc61",
+      "bytes": 7883194,
+      "edge01_sha256": "a389b10d94eb8e6b9a153223d381aab821b0eff4cd73967835a21032192abc61",
+      "matches_edge01": true
+    },
+    {
+      "file": "snaps-2014.csv",
+      "sha256": "84540709d9483552185c8ca3ef30b2f66fb94b30c3e6c21e7a27205f337f21d3",
+      "bytes": 2156558,
+      "edge01_sha256": "84540709d9483552185c8ca3ef30b2f66fb94b30c3e6c21e7a27205f337f21d3",
+      "matches_edge01": true
+    },
+    {
+      "file": "stats-2015.csv",
+      "sha256": "21052baa3b3291a92faf3e6827891295010dca8cc5cefd5a909984b9d7b64664",
+      "bytes": 7881066,
+      "edge01_sha256": "21052baa3b3291a92faf3e6827891295010dca8cc5cefd5a909984b9d7b64664",
+      "matches_edge01": true
+    },
+    {
+      "file": "snaps-2015.csv",
+      "sha256": "841496252ada825c3c50d3ba9b4b26d3f4fabd0fedc5fb44f286ddaaa5bdb7e0",
+      "bytes": 2155797,
+      "edge01_sha256": "841496252ada825c3c50d3ba9b4b26d3f4fabd0fedc5fb44f286ddaaa5bdb7e0",
+      "matches_edge01": true
+    },
+    {
+      "file": "stats-2016.csv",
+      "sha256": "eb0264c65d1ef593196afcd4ba24e9f2e9b7942923bf6f4bb4639684e2c4d470",
+      "bytes": 7852359,
+      "edge01_sha256": "eb0264c65d1ef593196afcd4ba24e9f2e9b7942923bf6f4bb4639684e2c4d470",
+      "matches_edge01": true
+    },
+    {
+      "file": "snaps-2016.csv",
+      "sha256": "a778e24e9eb665ffe8f16093b03c5a263dca0250b3aa92bd6002f61f534bea59",
+      "bytes": 2157110,
+      "edge01_sha256": "a778e24e9eb665ffe8f16093b03c5a263dca0250b3aa92bd6002f61f534bea59",
+      "matches_edge01": true
+    },
+    {
+      "file": "stats-2017.csv",
+      "sha256": "592b0916065987b0b3afb0480162f03350d16b12250dc42b0f194e2ab1378563",
+      "bytes": 7821392,
+      "edge01_sha256": "592b0916065987b0b3afb0480162f03350d16b12250dc42b0f194e2ab1378563",
+      "matches_edge01": true
+    },
+    {
+      "file": "snaps-2017.csv",
+      "sha256": "eab2fad2df99249d4061ed9c5c34d312cdba07cf3159d027d255bdc9b6526917",
+      "bytes": 2157818,
+      "edge01_sha256": "eab2fad2df99249d4061ed9c5c34d312cdba07cf3159d027d255bdc9b6526917",
+      "matches_edge01": true
+    }
+  ],
+  "ids_source": {
+    "url": "https://raw.githubusercontent.com/dynastyprocess/data/2bbc02be740f0972e4a13791cd9f8ffd1b78a9d2/files/db_playerids.csv",
+    "note": "Exact EDGE-01 bytes; the master-branch file has since changed upstream."
+  },
+  "ids_independence": {
+    "identical_with_empty_crosswalk": true,
+    "note": "ids.csv only feeds the snap-count join; the VIP fit reads stats columns only."
+  },
+  "published_agreement": [
+    {
+      "format": "ppr",
+      "position": "QB",
+      "n": 2388,
+      "published_n": 2388,
+      "rounded_matches_published": true
+    },
+    {
+      "format": "ppr",
+      "position": "RB",
+      "n": 6586,
+      "published_n": 6586,
+      "rounded_matches_published": true
+    },
+    {
+      "format": "ppr",
+      "position": "WR",
+      "n": 8942,
+      "published_n": 8942,
+      "rounded_matches_published": true
+    },
+    {
+      "format": "ppr",
+      "position": "TE",
+      "n": 4505,
+      "published_n": 4505,
+      "rounded_matches_published": true
+    },
+    {
+      "format": "half",
+      "position": "QB",
+      "n": 2388,
+      "published_n": 2388,
+      "rounded_matches_published": true
+    },
+    {
+      "format": "half",
+      "position": "RB",
+      "n": 6586,
+      "published_n": 6586,
+      "rounded_matches_published": true
+    },
+    {
+      "format": "half",
+      "position": "WR",
+      "n": 8942,
+      "published_n": 8942,
+      "rounded_matches_published": true
+    },
+    {
+      "format": "half",
+      "position": "TE",
+      "n": 4505,
+      "published_n": 4505,
+      "rounded_matches_published": true
+    },
+    {
+      "format": "standard",
+      "position": "QB",
+      "n": 2388,
+      "published_n": 2388,
+      "rounded_matches_published": true
+    },
+    {
+      "format": "standard",
+      "position": "RB",
+      "n": 6586,
+      "published_n": 6586,
+      "rounded_matches_published": true
+    },
+    {
+      "format": "standard",
+      "position": "WR",
+      "n": 8942,
+      "published_n": 8942,
+      "rounded_matches_published": true
+    },
+    {
+      "format": "standard",
+      "position": "TE",
+      "n": 4505,
+      "published_n": 4505,
+      "rounded_matches_published": true
+    },
+    {
+      "format": "te_premium",
+      "position": "QB",
+      "n": 2388,
+      "published_n": 2388,
+      "rounded_matches_published": true
+    },
+    {
+      "format": "te_premium",
+      "position": "RB",
+      "n": 6586,
+      "published_n": 6586,
+      "rounded_matches_published": true
+    },
+    {
+      "format": "te_premium",
+      "position": "WR",
+      "n": 8942,
+      "published_n": 8942,
+      "rounded_matches_published": true
+    },
+    {
+      "format": "te_premium",
+      "position": "TE",
+      "n": 4505,
+      "published_n": 4505,
+      "rounded_matches_published": true
+    }
+  ],
+  "fitting_code": [
+    {
+      "file": "lib/research/edge01/cases.js",
+      "sha256": "373642568d501264c7531fb9232534a377abf38bac175dcafbe074f062861ff1"
+    },
+    {
+      "file": "lib/research/edge01/fit.js",
+      "sha256": "56bdbf67e71b0c50312924e3b46a7c0655c2194c817a74ff916d980b6c88aa11"
+    },
+    {
+      "file": "lib/research/edge01/features.js",
+      "sha256": "794510725b351c2990c37f7952d786bb9927ef4ebf6c45ccd034718eb47143b0"
+    },
+    {
+      "file": "lib/research/edge01/data.js",
+      "sha256": "53caee0707d86b9a30d83738b57e0e9529828deb64c71ba37da4bb05355ced8f"
+    },
+    {
+      "file": "lib/backtest/data.js",
+      "sha256": "97038836391e9d8a7eba947e35ed747634cecda50f861ab67d63a4559c92ed61"
+    },
+    {
+      "file": "lib/normalize/scoring.js",
+      "sha256": "246f1cad7f1769f61d3400b8ab32375c56259c74413bde081676eee94414856d"
+    },
+    {
+      "file": "lib/sources/csv.js",
+      "sha256": "e1b1b6e4126a9f95eb95a6b0df4ab40f248affd30fbb1328302f7aa78e9478dd"
+    },
+    {
+      "file": "lib/sources/contracts.js",
+      "sha256": "6147d5e7089cb0e53c27762268990720e52754ceb7c5a3fafc4506b2f03ebda7"
+    },
+    {
+      "file": "lib/decision/features.js",
+      "sha256": "fb2be6c2d950424822a0c1a6a776bb91597d5911637a09f637db1ac436e5009b"
+    }
+  ],
+  "no_2026": "Only 2014–2017 files are read; the loader refuses seasons >= 2026 and this script refuses rows after 2017."
+}
