@@ -27,6 +27,22 @@ Status values: `proposed` · `ready` · `in-progress` · `in-review` · `blocked
 
 ## Active tasks
 
+### EDGE-01 — Forecast & opportunity edge research slice
+- Status: in-review (draft PR; merge not requested)
+- Owner: Claude Code (project thread, autonomous batch requested by the owner on 2026-10-15)
+- Reviewer: repository owner / ChatGPT PM, with independent review as the owner routes it
+- Branch: `research/edge-01-forecast-opportunity`, from `main` at `4b912e1`; current `main` (`e1abffa`, ESPN-LIVE-01 / PR #22) merged in on 2026-10-19 (merge commit, no rebase or force-push)
+- Dependencies: Evaluation Protocol v1 (ADR 0007), ADR 0009 (H9 `ew2_h16`), ADR 0010 (betting-derived inputs research-only), ADR 0011. No file overlap with ESPN-LIVE-01.
+- Allowed scope: new research-only modules `lib/research/edge01/*`, runner `scripts/research/edge-01.js`, `test/edge01-research.test.js`, `docs/research/edge-01-analysis-plan.md`, `docs/research/edge-01.md`, `artifacts/research/edge-01-results.json`, and this entry. Forbidden: production model, weights, calibration, versions, Pickup Rating, add/drop/replacement/trade formulas, Market Value, signal thresholds, ESPN/Flaim/provider code, schemas, UI, routes, dependencies, lockfile, CI; 2026 outcomes; new betting/odds inputs.
+- Acceptance criteria: reproducible walk-forward benchmark comparing production, Q, PPG, recent-form, xFP and new candidates with MAE/RMSE/median AE/bias/Spearman/pair accuracy by fold, position and stratum; opportunity feature set built only from available history; small interpretable candidate family; offline breakout evaluator with precision/lift/recall/PR-AUC/lead time; results artifact, summary and a recommended next production contract; no production behaviour change.
+- Handoff notes:
+  - Work: analysis plan committed before any outcome was scored (`5fdb942`). Class R walk-forward (train 2016…Y−2, select Y−1, test Y; primary folds 2022–2025 consumed, development folds 2019–2021) on nflverse 2014–2025 + ffopportunity 2021–2025; no 2026 file read. Truncation-invariance canary 2,189/2,189 cases identical; no xFP before 2021. Best result: VIP (non-betting volume-implied points) in place of xFP beats production by −0.035 MAE (4/4 primary, 3/3 development folds, every position and format), −0.029 against a spread-matched production control; with the H9 prior −0.044 (post-hoc). Below the 0.05 screen; ranking and lineup gains unresolved. Role-change gating, recency refits, EW-all windows and the xFP refit were null or harmful. Breakout signals: lift 1.1–2.6 at 5–12% precision; draft capital and the existing engine are not beaten by new sustained-role flags. Details: `docs/research/edge-01.md`.
+  - Tests: `pnpm test` 408/408 pass (16 new in `test/edge01-research.test.js`: sealed-season refusal, truncation invariance, missingness, identity joins, walk-forward isolation, format/xFP consistency, determinism, production isolation); `pnpm build` passes; `git diff --check` clean; full research run end-to-end (20 permutations) and two repeat runs byte-identical apart from `generated_at`. No production file differs from `main`. No UI, route or loader change, so `pnpm test:ui` was not run.
+  - Integration (2026-10-19): only conflict was this ledger section (both entries kept). Main touched no EDGE-01 input (`lib/backtest`, `lib/decision`, `lib/signals`, `lib/normalize`, `lib/sources`, lockfile), so no compatibility change was needed. Research code, tests, docs and artifact are byte-identical to `1534413`; a fresh 20-permutation run reproduces the committed artifact exactly (excluding `generated_at`). `node --test test/edge01-research.test.js` 16/16; `pnpm test` 432/432; `pnpm build` passes; `git diff --check` clean. Results and conclusions unchanged.
+  - Correction during the run: non-PPR formats first reused PPR xFP; fixed (xFP re-scored per format) before the reported results, with a regression test.
+  - Remaining (each needs approval): EDGE-02 VIP Start Value prospective shadow (contract in `docs/research/edge-01.md`); ranking-targeted model research; outcome scorer for shadow records.
+- Blockers: none.
+
 ### ESPN-LIVE-01 — Live Flaim-backed ESPN local private transport
 - Status: in-review (draft PR #22; merge not requested)
 - Owner: Claude Code (project thread "ESPN-LIVE-01")
