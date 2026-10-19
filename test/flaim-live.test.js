@@ -4,11 +4,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {readFileSync,writeFileSync,mkdtempSync,rmSync,statSync,symlinkSync,readdirSync,existsSync} from "node:fs";
 import {tmpdir} from "node:os";
-import {join} from "node:path";
+import {join,dirname,basename} from "node:path";
 import {createHash} from "node:crypto";
 import {FLAIM_MCP_URL,FLAIM_ORIGIN,pkcePair,stateMatches,loopbackRedirect,discoverFlaim,registerClient,exchangeCode,refreshTokens,authorizationUrl,tokenFields} from "../lib/providers/flaim/oauth.js";
 import {readFlaimAuth,writeFlaimAuth} from "../lib/providers/flaim/auth-store.js";
-import {createFlaimMcpClient,parseMcpBody,FLAIM_READ_TOOLS} from "../lib/providers/flaim/mcp-client.js";
+import {createFlaimMcpClient,parseMcpBody,FLAIM_READ_TOOLS,authFileIdentity} from "../lib/providers/flaim/mcp-client.js";
 import {loadFlaimLiveFacts,FREE_AGENT_POSITIONS,sessionPayload} from "../lib/providers/flaim/live-source.js";
 import {createPrivateEspnProvider,LIVE_TTL_MS,LIVE_MANUAL_COOLDOWN_MS} from "../lib/providers/flaim/private-source.js";
 import {validatePrivateConfig} from "../lib/private/config.js";
@@ -504,4 +504,53 @@ test("blocker 4: a malformed optional resource is left out with a warning and th
  // A well-formed resource that contradicts the core league still fails the whole load closed.
  const {client,f}=liveClient({payload:n=>n==="get_matchups"?{success:true,data:{matchups:[{matchupPeriodId:1,home:{teamId:99,totalPoints:null},away:{teamId:1,totalPoints:null},winner:null}]}}:undefined});
  try{await assert.rejects(loadFlaimLiveFacts(client,{leagueId:LEAGUE,season:SEASON}));}finally{f.cleanup();}
+});
+
+// ---- Codex re-verification of f8326a2 (each test fails without its fix) ----
+test("P1: an old authorization's delayed refresh never overwrites a newer reconnect, and its load fails closed",async()=>{
+ let open;const gate=new Promise(r=>(open=r));
+ const bundleB=structuredClone(BUNDLE);bundleB.session.data.allLeagues[0].teamId="2";
+ const B=fakeFlaim({bundle:bundleB,access:"acct-b-access"});
+ const p=livePrivate({teamId:null,opts:{tokenGate:gate},auth:{access_expires_at:new Date(Date.now()-1000).toISOString(),authorization_generation:GEN_A},
+  fetcher:base=>async(u,i={})=>(i.headers?.authorization||"")==="Bearer acct-b-access"?B.fetcher(u,i):base(u,i)});
+ try{await withPrivate(p,async()=>{
+  const stale=handleSnapshotRequest(local(`/api/snapshot?provider=espn&league=${LEAGUE}&compact=0`));
+  for(let i=0;i<200&&!p.state.urls.some(u=>u.endsWith("/auth/token"));i++)await new Promise(r=>setTimeout(r,5));
+  assert.ok(p.state.urls.some(u=>u.endsWith("/auth/token")),"A's refresh grant is in flight");
+  // flaim:connect writes account B (new generation) at the same path while A's grant is paused.
+  authFile(p.authPath,{access_token:"acct-b-access",refresh_token:"acct-b-refresh",authorization_generation:GEN_B});
+  open();
+  const res=await stale,text=await res.text();
+  assert.notEqual(res.status,200,"the stale load fails closed");
+  assert.equal(text.includes("owner_private"),false);assert.equal(text.includes("Synthetic Team One"),false,"no account A facts are returned");
+  for(const secret of [GEN_A,GEN_B,"test-access-1","test-refresh-1","acct-b-access",p.authPath])assert.equal(text.includes(secret),false);
+  const stored=readFlaimAuth(p.authPath);
+  assert.deepEqual([stored.access_token,stored.refresh_token,stored.authorization_generation],["acct-b-access","acct-b-refresh",GEN_B],"B's authorization is still stored");
+  assert.equal(p.state.calls.length,0,"A's rotated token was never used for an MCP call");
+  const next=await (await handleSnapshotRequest(local(`/api/snapshot?provider=espn&league=${LEAGUE}&compact=0`))).json();
+  assert.equal(next.my_roster.roster_id,2,"the next load uses the reconnected account");
+ });}finally{p.cleanup();}
+});
+
+test("P2: filename-case aliases of one auth file (Windows semantics) share one refresh lock; distinct files stay distinct",async()=>{
+ const f=authFolder({access_expires_at:new Date(Date.now()-1000).toISOString(),authorization_generation:GEN_A});
+ // Case-insensitive filesystem double: any spelling of the name resolves to the one file on disk (as Windows' native realpath does).
+ const winRealpath=path=>{const name=readdirSync(dirname(path)).find(n=>n.toLowerCase()===basename(path).toLowerCase());if(!name)throw new Error("ENOENT");return join(dirname(path),name);};
+ const read=(path,o)=>readFlaimAuth(winRealpath(path),o),write=(path,v,o)=>writeFlaimAuth(winRealpath(path),v,o);
+ let open;const gate=new Promise(r=>(open=r));
+ const {fetcher,state}=fakeFlaim({tokenGate:gate});
+ try{
+  const lower=createFlaimMcpClient({authPath:f.authPath,fetcher,read,write,realpath:winRealpath});
+  const upper=createFlaimMcpClient({authPath:join(f.dir,"FLAIM-AUTH.JSON"),fetcher,read,write,realpath:winRealpath});
+  const a=lower.callTool("get_user_session");await new Promise(r=>setTimeout(r,10));
+  const b=upper.callTool("get_league_info",{});await new Promise(r=>setTimeout(r,10));
+  open();await Promise.all([a,b]);
+  assert.equal(state.tokenBodies.filter(x=>x.grant_type==="refresh_token").length,1,"one rotating grant for both spellings");
+  assert.equal(readFlaimAuth(f.authPath).refresh_token,"test-refresh-1");
+  assert.equal(globalThis[Symbol.for("fantasy-dashboard.flaim-refreshes")].size,0);
+  assert.equal(authFileIdentity(join(f.dir,"FLAIM-AUTH.JSON"),{realpath:winRealpath}),authFileIdentity(f.authPath,{realpath:winRealpath}));
+  // On this case-sensitive filesystem two names that differ only in case are two files, and keep two keys.
+  writeFileSync(join(f.dir,"Other.json"),"{}");writeFileSync(join(f.dir,"other.json"),"{}");
+  if(readdirSync(f.dir).filter(n=>n.toLowerCase()==="other.json").length===2)assert.notEqual(authFileIdentity(join(f.dir,"Other.json")),authFileIdentity(join(f.dir,"other.json")));
+ }finally{f.cleanup();}
 });
