@@ -1,0 +1,107 @@
+{
+ "task": "PROJECTION-EXPERIMENT-01 / ESPN pool certificate feasibility",
+ "evidence_class": "X (synthetic league)",
+ "cap_per_position": 100,
+ "provenance": [
+  {
+   "file": "ownership.csv",
+   "sha256": "d805e2aeda6e2852c5f8392b4b35a64c958f5d5ae6bf2c552ffcad4bacbbe6fb",
+   "bytes": 684819
+  },
+  {
+   "file": "ids.csv",
+   "sha256": "9bc031b09ccb2fc72e173856dcc80fc7e5e19f3e0fedef47850ee8aee2585b2d",
+   "bytes": 2639486
+  },
+  {
+   "file": "games-le2025.csv",
+   "sha256": "9feb7c0c41adcd6ec95b0b01ea239fa110cf4fc0c133ae9e800af22dacb61102",
+   "bytes": 2128466
+  }
+ ],
+ "assumptions": [
+  "rostered set = most ESPN-owned players at the position (approximation of a real league)",
+  "Flaim order = ESPN-wide rostered rate (documented ordering)",
+  "value = production Start Value",
+  "threshold = min(3rd best returned value, value at the rostered-count rank in rostered ∪ returned)",
+  "unrated players sort last (worst case)"
+ ],
+ "result": {
+  "8-team (owner's ESPN size)": {
+   "QB": {
+    "position_weeks": 45,
+    "cap_binds": 0,
+    "certificate_passes": 45,
+    "omitted_above_threshold_players": 0,
+    "pass_rate": 1,
+    "max_lookups": 0,
+    "median_lookups_when_failing": 0
+   },
+   "RB": {
+    "position_weeks": 45,
+    "cap_binds": 0,
+    "certificate_passes": 45,
+    "omitted_above_threshold_players": 0,
+    "pass_rate": 1,
+    "max_lookups": 0,
+    "median_lookups_when_failing": 0
+   },
+   "WR": {
+    "position_weeks": 45,
+    "cap_binds": 39,
+    "certificate_passes": 10,
+    "omitted_above_threshold_players": 107,
+    "pass_rate": 0.2222222222222222,
+    "max_lookups": 8,
+    "median_lookups_when_failing": 3
+   },
+   "TE": {
+    "position_weeks": 45,
+    "cap_binds": 0,
+    "certificate_passes": 45,
+    "omitted_above_threshold_players": 0,
+    "pass_rate": 1,
+    "max_lookups": 0,
+    "median_lookups_when_failing": 0
+   }
+  },
+  "12-team": {
+   "QB": {
+    "position_weeks": 45,
+    "cap_binds": 0,
+    "certificate_passes": 45,
+    "omitted_above_threshold_players": 0,
+    "pass_rate": 1,
+    "max_lookups": 0,
+    "median_lookups_when_failing": 0
+   },
+   "RB": {
+    "position_weeks": 45,
+    "cap_binds": 0,
+    "certificate_passes": 45,
+    "omitted_above_threshold_players": 0,
+    "pass_rate": 1,
+    "max_lookups": 0,
+    "median_lookups_when_failing": 0
+   },
+   "WR": {
+    "position_weeks": 45,
+    "cap_binds": 5,
+    "certificate_passes": 42,
+    "omitted_above_threshold_players": 5,
+    "pass_rate": 0.9333333333333333,
+    "max_lookups": 2,
+    "median_lookups_when_failing": 2
+   },
+   "TE": {
+    "position_weeks": 45,
+    "cap_binds": 0,
+    "certificate_passes": 45,
+    "omitted_above_threshold_players": 0,
+    "pass_rate": 1,
+    "max_lookups": 0,
+    "median_lookups_when_failing": 0
+   }
+  }
+ }
+}
