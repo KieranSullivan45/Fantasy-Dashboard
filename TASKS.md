@@ -27,6 +27,17 @@ Status values: `proposed` · `ready` · `in-progress` · `in-review` · `blocked
 
 ## Active tasks
 
+### PROJECTION-EXPERIMENT-01 — Weekly + ROS projection model experiment and ESPN pool alternatives (research)
+- Status: in-review (draft PR; research only, no merge without owner authorization)
+- Owner: Claude (project thread, owner-authorized experiment 2026-10-22, routine sign-offs waived)
+- Reviewer: owner / ChatGPT PM
+- Branch: `claude/project-thread-dw1k4w` (from `main` `cfaa336`)
+- Dependencies: EDGE-01 harness and data; EDGE-RANK-01 findings (P5)
+- Allowed scope: `lib/research/projexp/*`, `scripts/research/projexp/*`, `test/projexp-research.test.js`, `docs/research/projection-experiment*.md`, `artifacts/research/projection-experiment-*.json`, `artifacts/research/espn-pool-certificate.json`, this entry
+- Acceptance criteria: plan frozen before consumed seasons scored; no 2026 data; betting-derived models labelled; consensus benchmark-only; null results preserved; no production change.
+- Handoff notes: plan `735e050` frozen and pushed before the one-time 2022–2025 scoring. Results in `docs/research/projection-experiment.md`. PX (non-betting P5ctx + GBM blend): lineup +0.91 pts/roster-week vs production [+0.49, +1.34], 4/4 folds (passes 0.1 screen); MAE −0.028 [−0.061, +0.003] (fails 0.05 screen). PXbet (closing lines, betting-derived): −0.063 MAE, +1.41 lineup (passes both). Conformal 80% intervals cover 80.0%. ROS PPG model −0.108 MAE vs flat production (passes); ROS total −3.55 MAE with availability. FantasyPros consensus ranks better than every model (PX right 46% when they disagree): no edge over experts. ESPN: complement certificate feasible (8-team synthetic: QB/RB/TE always certify, WR needs ≤ 8 `get_players` confirmations); FantasyPros names-only rosters are not usable. Tests: `node --test test/projexp-research.test.js` 8/8; `pnpm test` 440 pass / 0 fail. Recommended next (PM/owner decide): PX/PXbet capture-only shadow; ROS research view; M3 pool certificate task.
+- Blockers: none.
+
 ### EDGE-01 — Forecast & opportunity edge research slice
 - Status: in-review (draft PR; merge not requested)
 - Owner: Claude Code (project thread, autonomous batch requested by the owner on 2026-10-15)

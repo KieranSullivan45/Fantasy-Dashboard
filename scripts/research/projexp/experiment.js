@@ -144,7 +144,8 @@ const rosOut = { ppg: {}, ppg_deltas: {}, avail: {}, total: {}, total_deltas: {}
 const ppgMaps = Object.fromEntries(Object.entries(ppgPred).map(([n, f]) => [n, toMap(rosScored, f)]));
 for (const [n, m] of Object.entries(ppgMaps)) {
   rosOut.ppg[n] = pointMetrics(frame(rosScored, m, ROS_PPG), { pairs: false });
-  if (n !== "prod_flat") rosOut.ppg_deltas[n] = pairedDelta(frame(rosScored, m, ROS_PPG), frame(rosScored, ppgMaps.prod_flat, ROS_PPG));
+  if (n !== "prod_flat") rosOut.ppg_deltas[n] = { ...pairedDelta(frame(rosScored, m, ROS_PPG), frame(rosScored, ppgMaps.prod_flat, ROS_PPG)),
+    per_fold: Object.fromEntries(SCORE.map(Y => [Y, pairedDelta(frame(rosScored.filter(r => r.season === Y), m, ROS_PPG), frame(rosScored.filter(r => r.season === Y), ppgMaps.prod_flat, ROS_PPG), { draws: 200 })?.delta_mae])) };
 }
 for (const [n, f] of Object.entries(availPred)) { const fr = rosScored.filter(r => numeric(f(r)) && numeric(r.ros.played_rate)); rosOut.avail[n] = { n: fr.length, mae: mean(fr.map(r => Math.abs(f(r) - r.ros.played_rate))), bias: mean(fr.map(r => f(r) - r.ros.played_rate)) }; }
 const TOTAL = r => r.ros.scheduled > 0 ? r.ros.total : null;
